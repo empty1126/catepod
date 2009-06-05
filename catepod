@@ -1,0 +1,192 @@
+#!/usr/bin/perl
+
+###-------------------------------------------------------------------
+### File    : catepod.pl
+### Author  : whoppix <jwrings@gmail.com>
+### Description : Simple daemon construct that does the usual daemon
+###         housekeeping, daemonizing, logging, privilege dropping,
+###         pid file management, etc...
+### License : GPLv2
+### Created : 01 Jun 2009 by  <whoppix@localhost.localdomain>
+###-------------------------------------------------------------------
+
+use strict;
+use warnings;
+
+use POE;
+use POE::Wheel::FollowTail;
+use Proc::Daemon;
+
+use Catepod::Logger;
+
+use Privileges::Drop;
+use File::Copy;
+use Archive::Tar;
+use JSON;
+use Fcntl qw/:flock/;
+
+my $configfile = shift @ARGV;
+my $conf;
+
+{
+    open my $fh, '<', $configfile or die "Couldn't open config file: $!";
+    local $/;
+    my $content = <$fh>;
+    $conf = from_json($content);
+    close $fh;
+}
+
+my $RUNAS_USER     = $conf->{runas_user};
+my $DAEMONIZE      = $conf->{daemonize};
+my $NAME           = $conf->{logname};
+my $PIDFILE        = $conf->{pidfile};
+my $PIPE_DIRECTORY = $conf->{pipe_dir};
+my $GSWI_DIR       = $conf->{gswi_dir};
+my $GAMES          = $conf->{games};
+print "pipe: $PIPE_DIRECTORY\n";
+
+my $VERSION = 0.1;
+
+#
+# Workflow:
+# - Check if we run as root
+# - check PID file
+# - Daemonize
+# - open log
+# - open pipe
+# - look up user id to drop privileges to
+# - drop privileges
+# - process commands
+#
+
+die "Must run as root" unless $> == 0;
+
+# Daemonizing
+Proc::Daemon::Init() if $DAEMONIZE;
+
+# Open log
+my $logger = Catepod::Logger->new($NAME);
+
+open my $lockfile, '>', $PIDFILE
+  or $logger->error("Couldn't open $PIDFILE for writing: $!");
+flock( $lockfile, LOCK_EX | LOCK_NB )
+  or $logger->error("Couldn't lock $PIDFILE, perhaps another instance of $NAME is running already?");
+
+print {$lockfile} $$ . "\n"
+  or $logger->error("Couldn't write PID ($$) to $PIDFILE: $!");
+
+# dropping privileges
+drop_privileges($RUNAS_USER);
+
+POE::Session->create(
+    inline_states => {
+        _start          => \&start,
+        _stop           => \&stop,
+        sig_shutdown    => \&sig_shutdown,
+        pipe_data       => \&pipe_data,
+        pipe_reset      => \&pipe_reset,
+        process_command => \&process_command,
+    },
+);
+
+POE::Kernel->run();
+
+sub start {
+    my $user_id = $>;
+    $logger->info("version $VERSION Starting as user $user_id");
+    $_[HEAP]->{fifo} = POE::Wheel::FollowTail->new(
+        Filename   => $PIPE_DIRECTORY,
+        InputEvent => "pipe_data",
+        ResetEvent => "pipe_reset",
+        ErrorEvent => "pipe_error",
+    ) or $logger->warn("Couldn't open pipe: $!");
+    $_[KERNEL]->sig( INT => "sig_shutdown" );
+}
+
+sub stop {
+    $logger->info("Stopping.");
+    flock( $lockfile, LOCK_UN )
+      or $logger->warn("Failed to unlock $PIDFILE: $!");
+}
+
+sub pipe_data {
+    my $input = $_[ARG0];
+    my $hashref;
+    eval { $hashref = from_json($input); };
+    if ($@) {
+        $logger->warn("received invalid JSON: $input");
+        return;
+    }
+    POE::Kernel->yield( 'process_command', $hashref );
+}
+
+sub pipe_reset {    # we don't do anything here, pipes can't be reset.
+}
+
+sub pipe_error {
+    my ( $operation, $errnum, $errstr, $id ) = @_[ ARG0 .. ARG3 ];
+    $logger->info("pipe error while $operation: $errnum, $errstr, $id");
+}
+
+sub sig_shutdown {
+    delete $_[HEAP]->{fifo};    # freeing the resource we are watching
+    $_[KERNEL]->sig_handled();
+}
+
+sub process_command {
+    my $data = $_[ARG0];
+    if ( !$data->{command} ) {
+        $logger->warn("invalid json sent: command is missing");
+        return;
+    }
+    if ( $data->{command} eq 'quit' ) {
+        $logger->warn("received quit command, exiting...");
+        delete $_[HEAP]->{fifo};
+    }
+    elsif ( $data->{command} eq 'start' ) {
+        my $port    = $data->{port};
+        my $game    = $data->{game};
+        my $params  = $data->{params};
+        my $install = $data->{install};
+        my $poco;
+        my $gsdir = "/$GSWI_DIR/gameserver/$port/";
+
+        unless ( $port >= 1024 && $port <= 65535 ) {
+            $logger->warn("server port: '$port' is to low, or to high.");
+            return;
+        }
+        unless ( $poco = $conf->{games}->{$game} ) {
+            $logger->warn(
+                "Do not know what to do with game '$game', perhaps you forgot to specify a poco for it in the config?");
+            return;
+        }
+        if ( $params eq "" ) {
+            $logger->warn("cannot start gameserver '$port'  without params.");
+            return;
+        }
+        $logger->info( "Starting $poco with $params in $gsdir, " . ( $install ? "while installing it" : "" ) );
+
+        # starting the gameserver
+        my $require_name = $poco;
+        $require_name =~ s/::/\//g;
+        $require_name .= '.pm';
+        eval { require $require_name; };
+        if ($@) { $logger->info("Error while compilling $poco: $@"); return; }
+        eval {
+            $poco->create( { port => 27015, path => $gsdir, params => $params, ( $install ? ( install => 1 ) : () ) } );
+        };
+        if ($@) {
+            $logger->info("Error while starting $poco: $@");
+            return;
+        }
+    }
+    elsif ( $data->{command} eq "stop" ) {
+        my $port = $data->{port};
+
+        # tue irgendwas um den server zu stoppen #
+        $logger->info("stop gameserver with port: '$port'");
+    }
+    else {
+        $logger->warn( "invalid json sent: couldn't understand command '" . $data->{command} . "'" );
+    }
+}

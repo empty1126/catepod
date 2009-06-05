@@ -1,0 +1,15 @@
+{
+"daemonize":1,
+"logname":"catepod",
+"runas_user":"gameserver",
+"pidfile":"/var/lock/catepod.pid",
+"pipe_dir":"/home/gswi/socket",
+"gswi_dir":"/home/gswi",
+"games":
+    {
+        "counter-strike-source":"Catepod::Gameserver::CounterStrikeSource",
+        "counter-strike":"Catepod::Gameserver::CounterStrike",
+	"day-of-defeat":"Catepod::Gameserver::DayOfDefeat",
+	"day-of-defeat-source":"Catepod::Gameserver::DayOfDefeatSource"
+    }
+}
