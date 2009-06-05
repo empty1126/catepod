@@ -2,13 +2,12 @@
 catepod - gameserver blablabla whatever
 ============================================
 
-catepod is a gameserver blabla whatever daemon
-interacts using a unix pipe blablbaa
+catepod is a daemon that can interact and supervise different
+gameservers. It is based on perl/POE and POE::Component::Generic.
 
 INSTALL:
-to install do blablabla
-this thing doesn't have an install routine yet.
-
+This thing doesn't have an install routine.
+write up a makefile, sometimes soon!
 
 LICENSE
 catepod, Copyright (C) 2009 whoppix <jwrings@gmail.com>
