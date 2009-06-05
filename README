@@ -1,23 +1,16 @@
-                                                          -*- text -*-
-catepod
-========
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+============================================
+catepod - gameserver blablabla whatever
+============================================
 
-You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301
-USA.
+catepod is a gameserver blabla whatever daemon
+interacts using a unix pipe blablbaa
 
-Additional permission under GNU GPL version 3 section 7
+INSTALL:
+to install do blablabla
 
-If you modify this program, or any covered work, by linking or
-combining it with the OpenSSL project's OpenSSL library (or a
-modified version of that library), containing parts covered by the
-terms of the OpenSSL or SSLeay licenses, the Free Software Foundation
-grants you additional permission to convey the resulting work.
-Corresponding Source for a non-source form of such a combination
-shall include the source code for the parts of OpenSSL used as well
-as that of the covered work.
+
+LICENSE
+catepod, Copyright (C) 2009 whoppix <jwrings@gmail.com>
+    catepod comes with ABSOLUTELY NO WARRANTY; for details see the file `LICENSE´.
+    This is free software, and you are welcome to redistribute it
+    under certain conditions; see the LICENSE file for details.
