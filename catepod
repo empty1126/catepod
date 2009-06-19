@@ -20,8 +20,6 @@ use Proc::Daemon;
 use Catepod::Logger;
 
 use Privileges::Drop;
-use File::Copy;
-use Archive::Tar;
 use JSON;
 use Fcntl qw/:flock/;
 
@@ -65,7 +63,7 @@ die "Must run as root" unless $> == 0;
 Proc::Daemon::Init() if $DAEMONIZE;
 
 # Open log
-my $logger = Catepod::Logger->new($NAME);
+our $logger = Catepod::Logger->new($NAME);
 
 open my $lockfile, '>', $PIDFILE
   or $logger->error("Couldn't open $PIDFILE for writing: $!");
@@ -80,12 +78,17 @@ drop_privileges($RUNAS_USER);
 
 POE::Session->create(
     inline_states => {
-        _start          => \&start,
-        _stop           => \&stop,
+        _start   => \&start,
+        _stop    => \&stop,
+        _default => sub {
+            my ( $event, $args ) = @_[ ARG0, ARG1 ];
+            $logger->warn("Received unknown signal: $event");
+        },
         sig_shutdown    => \&sig_shutdown,
         pipe_data       => \&pipe_data,
         pipe_reset      => \&pipe_reset,
         process_command => \&process_command,
+        pipe_error      => \&pipe_error,
     },
 );
 
@@ -94,12 +97,14 @@ POE::Kernel->run();
 sub start {
     my $user_id = $>;
     $logger->info("version $VERSION Starting as user $user_id");
+    open my $fh, '<', $PIPE_DIRECTORY
+      or do { my $errstr = "Couldn't open pipe for reading: $!"; $logger->warn($errstr); die($errstr) };
     $_[HEAP]->{fifo} = POE::Wheel::FollowTail->new(
-        Filename   => $PIPE_DIRECTORY,
+        Handle     => $fh,
         InputEvent => "pipe_data",
         ResetEvent => "pipe_reset",
         ErrorEvent => "pipe_error",
-    ) or $logger->warn("Couldn't open pipe: $!");
+    ) or $logger->warn("Couldn't spawn wheel: $!");
     $_[KERNEL]->sig( INT => "sig_shutdown" );
 }
 
@@ -129,6 +134,7 @@ sub pipe_error {
 }
 
 sub sig_shutdown {
+    $logger->warn("received shutdown signal, exiting.");
     delete $_[HEAP]->{fifo};    # freeing the resource we are watching
     $_[KERNEL]->sig_handled();
 }
@@ -144,10 +150,10 @@ sub process_command {
         delete $_[HEAP]->{fifo};
     }
     elsif ( $data->{command} eq 'start' ) {
-        my $port    = $data->{port};
-        my $game    = $data->{game};
-        my $params  = $data->{params};
-        my $install = $data->{install};
+        my $port       = $data->{port};
+        my $game       = $data->{game};
+        my $params_ref = $data->{params};
+        my $install    = $data->{install};
         my $poco;
         my $gsdir = "/$GSWI_DIR/gameserver/$port/";
 
@@ -157,14 +163,16 @@ sub process_command {
         }
         unless ( $poco = $conf->{games}->{$game} ) {
             $logger->warn(
-                "Do not know what to do with game '$game', perhaps you forgot to specify a poco for it in the config?");
+                "Do not know what to do with game '$game', perhaps you forgot to specify a poco for it in the config?"
+            );
             return;
         }
-        if ( $params eq "" ) {
+        if ( @$params_ref <= 0 ) {
             $logger->warn("cannot start gameserver '$port'  without params.");
             return;
         }
-        $logger->info( "Starting $poco with $params in $gsdir, " . ( $install ? "while installing it" : "" ) );
+        $logger->info(
+            "Starting $poco with " . @$params_ref . " in $gsdir, " . ( $install ? "while installing it" : "" ) );
 
         # starting the gameserver
         my $require_name = $poco;
@@ -172,9 +180,8 @@ sub process_command {
         $require_name .= '.pm';
         eval { require $require_name; };
         if ($@) { $logger->info("Error while compilling $poco: $@"); return; }
-        eval {
-            $poco->create( { port => 27015, path => $gsdir, params => $params, ( $install ? ( install => 1 ) : () ) } );
-        };
+        eval { $poco->create( path => $gsdir, params => $params_ref, ( $install ? ( install => 1 ) : () ) ); };
+
         if ($@) {
             $logger->info("Error while starting $poco: $@");
             return;

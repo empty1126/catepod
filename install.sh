@@ -1,4 +1,4 @@
-#!/usr/bin/bash
+#!/bin/bash
 echo ">>> stopping catepod"
 killall catepod &> /dev/null
 echo ">>> compilling catepod"
