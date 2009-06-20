@@ -1,5 +1,5 @@
 {
-"daemonize":false,
+"daemonize":true,
 "logname":"catepod",
 "runas_user":"gameserver",
 "pidfile":"/var/lock/catepod.pid",
