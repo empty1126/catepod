@@ -23,6 +23,8 @@ use Privileges::Drop;
 use JSON;
 use Fcntl qw/:flock/;
 
+sub DEBUG() { 0 }
+
 my $configfile = shift @ARGV;
 my $conf;
 
@@ -84,37 +86,58 @@ POE::Session->create(
             my ( $event, $args ) = @_[ ARG0, ARG1 ];
             $logger->warn("Received unknown signal: $event");
         },
-        sig_shutdown    => \&sig_shutdown,
-        pipe_data       => \&pipe_data,
-        pipe_reset      => \&pipe_reset,
-        process_command => \&process_command,
-        pipe_error      => \&pipe_error,
+        sig_shutdown      => \&sig_shutdown,
+        pipe_data         => \&pipe_data,
+        pipe_reset        => \&pipe_reset,
+        process_command   => \&process_command,
+        pipe_error        => \&pipe_error,
+        add_gameserver    => \&add_gameserver,
+        delete_gameserver => \&delete_gameserver,
     },
+    heap => { gameserver => {}, }
 );
 
 POE::Kernel->run();
 
+sub add_gameserver {
+    my $port = $_[ARG0];
+    my $pid  = $_[ARG1];
+    $_[HEAP]->{gameserver}->{$port} = $pid;
+}
+
+sub delete_gameserver {
+    my $port = $_[ARG0];
+    delete $_[HEAP]->{gameserver}->{$port};
+}
+
 sub start {
+    DEBUG;
     my $user_id = $>;
     $logger->info("version $VERSION Starting as user $user_id");
-    open my $fh, '<', $PIPE_DIRECTORY
-      or do { my $errstr = "Couldn't open pipe for reading: $!"; $logger->warn($errstr); die($errstr) };
+    print "foo: $PIPE_DIRECTORY\n";
+
+    #open my $fh, '<', $PIPE_DIRECTORY
+    #  or do { my $errstr = "Couldn't open pipe for reading: $!"; $logger->warn($errstr); die($errstr) };
     $_[HEAP]->{fifo} = POE::Wheel::FollowTail->new(
-        Handle     => $fh,
+        Filename   => $PIPE_DIRECTORY,
         InputEvent => "pipe_data",
         ResetEvent => "pipe_reset",
         ErrorEvent => "pipe_error",
     ) or $logger->warn("Couldn't spawn wheel: $!");
-    $_[KERNEL]->sig( INT => "sig_shutdown" );
+    POE::Kernel->sig( INT => "sig_shutdown" );
+    POE::Kernel->alias_set('catepod');
 }
 
 sub stop {
+    DEBUG;
+    POE::Kernel->alias_remove('catepod');
     $logger->info("Stopping.");
     flock( $lockfile, LOCK_UN )
       or $logger->warn("Failed to unlock $PIDFILE: $!");
 }
 
 sub pipe_data {
+    DEBUG;
     my $input = $_[ARG0];
     my $hashref;
     eval { $hashref = from_json($input); };
@@ -126,20 +149,27 @@ sub pipe_data {
 }
 
 sub pipe_reset {    # we don't do anything here, pipes can't be reset.
+    DEBUG;
 }
 
 sub pipe_error {
+    DEBUG;
     my ( $operation, $errnum, $errstr, $id ) = @_[ ARG0 .. ARG3 ];
     $logger->info("pipe error while $operation: $errnum, $errstr, $id");
 }
 
 sub sig_shutdown {
+    DEBUG;
     $logger->warn("received shutdown signal, exiting.");
     delete $_[HEAP]->{fifo};    # freeing the resource we are watching
+    foreach my $key ( keys %{ $_[HEAP]->{gameserver} } ) {
+        POE::Kernel->post( $key => "shutdown" );
+    }
     $_[KERNEL]->sig_handled();
 }
 
 sub process_command {
+    DEBUG;
     my $data = $_[ARG0];
     if ( !$data->{command} ) {
         $logger->warn("invalid json sent: command is missing");
@@ -148,6 +178,7 @@ sub process_command {
     if ( $data->{command} eq 'quit' ) {
         $logger->warn("received quit command, exiting...");
         delete $_[HEAP]->{fifo};
+        POE::Kernel->yield('sig_shutdown');
     }
     elsif ( $data->{command} eq 'start' ) {
         my $port       = $data->{port};
@@ -171,8 +202,10 @@ sub process_command {
             $logger->warn("cannot start gameserver '$port'  without params.");
             return;
         }
-        $logger->info(
-            "Starting $poco with " . @$params_ref . " in $gsdir, " . ( $install ? "while installing it" : "" ) );
+        $logger->info( "Starting $poco with params: '"
+              . $params_ref
+              . "' in: '$gsdir', "
+              . ( $install ? "while installing it" : "" ) );
 
         # starting the gameserver
         my $require_name = $poco;
@@ -188,12 +221,13 @@ sub process_command {
         }
     }
     elsif ( $data->{command} eq "stop" ) {
-        my $port = $data->{port};
+        my $path = $data->{path};
 
-        # tue irgendwas um den server zu stoppen #
-        $logger->info("stop gameserver with port: '$port'");
+        POE::Kernel->post( $path => 'shutdown' );
+        $logger->info("stop gameserver in: $path");
     }
     else {
         $logger->warn( "invalid json sent: couldn't understand command '" . $data->{command} . "'" );
     }
 }
+

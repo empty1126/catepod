@@ -50,30 +50,22 @@ sub create {
     }
 
     if ( keys %options > 0 ) {
-        carp(   __PACKAGE__
-              . ': Unrecognized options in new(): '
-              . join( ', ', keys %options ) );
+        carp( __PACKAGE__ . ': Unrecognized options in new(): ' . join( ', ', keys %options ) );
     }
     POE::Session->create(
         inline_states => {
-            _start   => \&start,    # received when the session starts
-            _stop    => \&stop,     # received when the session is GC'ed
-            _install => \&install
-            ,    # internal signal to set the gameserver up the first time
-            _remove =>
-              \&remove,    # internal signal to remove the gameserver from disc
-            _stop_gameserver =>
-              \&stop_gameserver,    # internal signal to stop the gameserver
-            _start_gameserver =>
-              \&start_gameserver,    # internal signal to start the gameserver
-            shutdown => \&shudown
-            ,    # the signal to use when you want this thing to shut down
-            restart =>
-              \&restart,   # signal sent when the gameserver should be restarted
-                           # signals for the Wheel
-            got_child_stdout => \&child_stdout,
-            got_child_stderr => \&child_stderr,
-            got_child_close  => \&child_close,
+            _start            => \&start,               # received when the session starts
+            _stop             => \&stop,                # received when the session is GC'ed
+            _install          => \&install,             # internal signal to set the gameserver up the first time
+            _remove           => \&remove,              # internal signal to remove the gameserver from disc
+            _stop_gameserver  => \&stop_gameserver,     # internal signal to stop the gameserver
+            _start_gameserver => \&start_gameserver,    # internal signal to start the gameserver
+            shutdown          => \&shutdown,             # the signal to use when you want this thing to shut down
+            restart           => \&restart,             # signal sent when the gameserver should be restarted
+                                                        # signals for the Wheel
+            got_child_stdout  => \&child_stdout,
+            got_child_stderr  => \&child_stderr,
+            got_child_close   => \&child_close,
 
         },
         heap => {
@@ -91,16 +83,12 @@ sub start {
     my $path    = $heap->{path};
     my $params  = $heap->{params};
 
-#$logger->info(qq{starting gameserver: install: $install, path:$path, params:$params});
+    #$logger->info(qq{starting gameserver: install: $install, path:$path, params:$params});
     if ( -e "$path/srcds_run" && $install ) {
-        $logger->warn(
-"You told me to install a gameserver, but it seems there is already one installed!"
-        );
+        $logger->warn( "You told me to install a gameserver, but it seems there is already one installed!" );
     }
     elsif ( ( !-e "$path/srcds_run" ) && !$install ) {
-        $logger->warn(
-"There is no gameserver in $path, and you told me not to install one, aborting."
-        );
+        $logger->warn( "There is no gameserver in $path, and you told me not to install one, aborting." );
     }
 
     # install or start it, for now we only implement starting.
@@ -109,49 +97,55 @@ sub start {
     }
     else {
         POE::Kernel->yield('_start_gameserver');
+	POE::Kernel->post('catepod', add_gameserver => $_[HEAP]->{path}, 'none yet');
+	POE::Kernel->alias_set($path);
     }
 }
 
 sub start_gameserver {
 
-# workflow of this sub:
-# the gameserver is installed and ready to be started, fire it up with given parameters.
+    # workflow of this sub:
+    # the gameserver is installed and ready to be started, fire it up with given parameters.
     my $heap    = $_[HEAP];
     my $install = $heap->{install};
     my $path    = $heap->{path};
     my $params  = $heap->{params};
 
     chdir($path);
-    $logger->debug( "params: " . join(" ", @$params));
+    $logger->debug( "params: " . join( " ", @$params ) );
     my $child = POE::Wheel::Run->new(
-        Program     => "./test",
+        Program     => ["./srcds_run", @$params], # srcds_run
         StdoutEvent => "got_child_stdout",
         StderrEvent => "got_child_stderr",
         CloseEvent  => "got_child_close",
     ) or $logger->warn("Error: $!");
     $_[HEAP]->{wheel} = $child;
+    POE::Kernel->post('catepod', add_gameserver => $_[HEAP]->{path}, $_[HEAP]->{wheel}->PID());
 }
 
 sub child_stdout {
     my $text = $_[ARG0];
-    $logger->info( __PACKAGE__ . " OUTPUT: $text" );
+    $logger->info( __PACKAGE__ . " " . $_[HEAP]->{wheel}->PID() . " OUTPUT: $text" );
 }
 
 sub child_stderr {
     my $text = $_[ARG0];
-    $logger->warn( __PACKAGE__ . " ERROR: $text" );
+    $logger->warn( __PACKAGE__ . " " . $_[HEAP]->{wheel}->PID() .  " ERROR: $text" );
 }
 
 sub child_close {
-    delete $_[HEAP]->{wheel};
-    $logger->warn( __PACKAGE__ . " gameserver exited." );
+
+    $logger->warn( __PACKAGE__ . " " . $_[HEAP]->{wheel}->PID() .  " gameserver exited." );
+	delete $_[HEAP]->{wheel};
 }
 
 sub stop_gameserver {
 
     # we want this gameserver to be stopped.
     # error if the gameserver is not running
-    $logger->warn("stop_gameserver not implemented yet");
+    $logger->warn("killing gameserver " . $_[HEAP]->{wheel}->PID() . " with SIGTERM" );
+    # we probably want to be nicer here, and first fire a 15, and 4 seconds later a 9 or so.
+    $_[HEAP]->{wheel}->kill(9);
 }
 
 sub stop {
@@ -180,7 +174,8 @@ sub remove {
 }
 
 sub shutdown {
-
+    POE::Kernel->alias_remove($_[HEAP]->{path});
+    POE::Kernel->yield('_stop_gameserver');
     # check whether we are supposed to uninstall the gameserver as well
     # call _stop_gameserver, then remove if appropriate.
     # remove wheels so that the session can be GC'ed

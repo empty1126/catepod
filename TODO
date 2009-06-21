@@ -1,0 +1,6 @@
+TODO
+
+- Reap child processes correctly
+- Kill gameserver nicer (15, then 9 after a certain timeout)
+- Take installing/removing out of the pocos and move into own poco
+- make identification better, the path stuff is pretty wacky. 
