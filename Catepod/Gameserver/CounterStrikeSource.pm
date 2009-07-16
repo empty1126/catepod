@@ -5,6 +5,7 @@ use warnings;
 use POE;
 use POE::Wheel::Run;
 use Carp;
+
 my $logger = $main::logger;
 
 #
@@ -34,7 +35,7 @@ sub create {
     else {
         croak( __PACKAGE__ . '->new needs a \'params\' argument.' );
     }
-    if ( exists $options{'install'} ) {    # install shit or shit? shit.
+    if ( exists $options{'install'} ) { 
         $install = $options{'install'};
         delete $options{'install'};
     }
@@ -60,7 +61,10 @@ sub create {
             _remove           => \&remove,              # internal signal to remove the gameserver from disc
             _stop_gameserver  => \&stop_gameserver,     # internal signal to stop the gameserver
             _start_gameserver => \&start_gameserver,    # internal signal to start the gameserver
-            shutdown          => \&shutdown,             # the signal to use when you want this thing to shut down
+            stop_gameserver   => \&stop_gameserver,     # the signal to use when you want this thing to get stopped
+            start_gameserver  => \&start_gameserver,    #the signal to use when you want this thing to get started
+            sndstop           => \&sndstop,             #the signal to send the SIGKILL
+            _shutdown         => \&shutdown,             # the signal to use when you want this thing to shut down
             restart           => \&restart,             # signal sent when the gameserver should be restarted
                                                         # signals for the Wheel
             got_child_stdout  => \&child_stdout,
@@ -83,7 +87,6 @@ sub start {
     my $path    = $heap->{path};
     my $params  = $heap->{params};
 
-    #$logger->info(qq{starting gameserver: install: $install, path:$path, params:$params});
     if ( -e "$path/srcds_run" && $install ) {
         $logger->warn( "You told me to install a gameserver, but it seems there is already one installed!" );
     }
@@ -96,10 +99,12 @@ sub start {
         $logger->warn("Installing is not implemented yet.");
     }
     else {
+        $logger->info($path);
+        POE::Kernel->post('catepod' => $_[HEAP]->{path}, add_gameserver => 'none yet');
+        POE::Kernel->alias_set($path);
         POE::Kernel->yield('_start_gameserver');
-	POE::Kernel->post('catepod', add_gameserver => $_[HEAP]->{path}, 'none yet');
-	POE::Kernel->alias_set($path);
     }
+
 }
 
 sub start_gameserver {
@@ -120,7 +125,7 @@ sub start_gameserver {
         CloseEvent  => "got_child_close",
     ) or $logger->warn("Error: $!");
     $_[HEAP]->{wheel} = $child;
-    POE::Kernel->post('catepod', add_gameserver => $_[HEAP]->{path}, $_[HEAP]->{wheel}->PID());
+    POE::Kernel->post('catepod' => $_[HEAP]->{path}, add_gameserver => $_[HEAP]->{wheel}->PID());
 }
 
 sub child_stdout {
@@ -134,18 +139,39 @@ sub child_stderr {
 }
 
 sub child_close {
-
     $logger->warn( __PACKAGE__ . " " . $_[HEAP]->{wheel}->PID() .  " gameserver exited." );
 	delete $_[HEAP]->{wheel};
 }
 
 sub stop_gameserver {
+    my $heap = $_[HEAP];
+    my ($shit, $foo, $bar, $port) = split("/", $heap->{path});
+    my $path = $heap->{path};
 
-    # we want this gameserver to be stopped.
-    # error if the gameserver is not running
-    $logger->warn("killing gameserver " . $_[HEAP]->{wheel}->PID() . " with SIGTERM" );
-    # we probably want to be nicer here, and first fire a 15, and 4 seconds later a 9 or so.
-    $_[HEAP]->{wheel}->kill(9);
+    my $chkalias = 1;
+    if ( $chkalias == 0 ) { #chk whether the gameserver is running...
+        $logger->warn("There does not run a gameserver in '$path' with port '$port'");
+        POE::Kernel->yield('stop');
+    }elsif ( !-e "$path/srcds_run" ) { #chk wheter the gameserver is installed
+        $logger->warn("There is not installed, a gameserver in '$path'");
+        POE::Kernel->yield('stop');
+    }else {
+            $logger->info("Attempting to stop Gameserver");
+            $_[HEAP]->{wheel}->kill(9);
+            $_[HEAP]->{wheel}->kill(15);
+            POE::Kernel->delay(sndstop => 4);
+    
+            if ( $@ ) { $logger->warn("There some error's while killing Gameserver in '$path'"); }
+            else {
+                $logger->info("Gameserver has stopped successfull.");
+            }
+            
+    }
+}
+
+sub sndstop {
+    $logger->info("Attempting to kill Gameserver " . $_[HEAP]->{wheel}->PID() . " with SIGKILL" );
+    $_[HEAP]->{wheel}->kill(15);
 }
 
 sub stop {

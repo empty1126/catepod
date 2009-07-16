@@ -1,10 +1,10 @@
 {
-"daemonize":false,
+"daemonize":true,
 "logname":"catepod",
 "runas_user":"gameserver",
 "pidfile":"/var/lock/catepod.pid",
 "pipe_dir":"/tmp/gswi/socket",
-"gswi_dir":"/home/gswi",
+"gswi_dir":"/home/",
 "games":
     {
         "counter-strike-source":"Catepod::Gameserver::CounterStrikeSource",

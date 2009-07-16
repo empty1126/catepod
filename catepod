@@ -114,7 +114,6 @@ sub start {
     DEBUG;
     my $user_id = $>;
     $logger->info("version $VERSION Starting as user $user_id");
-    print "foo: $PIPE_DIRECTORY\n";
 
     #open my $fh, '<', $PIPE_DIRECTORY
     #  or do { my $errstr = "Couldn't open pipe for reading: $!"; $logger->warn($errstr); die($errstr) };
@@ -123,7 +122,8 @@ sub start {
         InputEvent => "pipe_data",
         ResetEvent => "pipe_reset",
         ErrorEvent => "pipe_error",
-    ) or $logger->warn("Couldn't spawn wheel: $!");
+      )
+      or $logger->warn("Couldn't spawn wheel: $!");
     POE::Kernel->sig( INT => "sig_shutdown" );
     POE::Kernel->alias_set('catepod');
 }
@@ -186,7 +186,7 @@ sub process_command {
         my $params_ref = $data->{params};
         my $install    = $data->{install};
         my $poco;
-        my $gsdir = "/$GSWI_DIR/gameserver/$port/";
+        my $gsdir = $data->{path};
 
         unless ( $port >= 1024 && $port <= 65535 ) {
             $logger->warn("server port: '$port' is to low, or to high.");
@@ -222,12 +222,12 @@ sub process_command {
     }
     elsif ( $data->{command} eq "stop" ) {
         my $path = $data->{path};
-
-        POE::Kernel->post( $path => 'shutdown' );
+        $logger->warn($path);
+        $_[KERNEL]->post( $path => '_shutdown' );
         $logger->info("stop gameserver in: $path");
     }
     else {
-        $logger->warn( "invalid json sent: couldn't understand command '" . $data->{command} . "'" );
+        $logger->warn( "invalid json sent: couldn' t understand command '" . $data->{command} . "'" );
     }
 }
 
