@@ -222,12 +222,43 @@ sub process_command {
     }
     elsif ( $data->{command} eq "stop" ) {
         my $path = $data->{path};
-        $logger->warn($path);
+        $logger->warn( "Attempting to stop Gameserver in: " . $path );
         $_[KERNEL]->post( $path => '_shutdown' );
-        $logger->info("stop gameserver in: $path");
+    }
+    elsif ( $data->{command} eq "install" ) {
+        my $path = $data->{path};
+        my $port = $data->{port};
+        my $game = $data->{game};
+        my $poco;
+
+        unless ( $port >= 1024 && $port <= 65535 ) {
+            $logger->info("Invalied server port: $port. Server have to be between 1024 and 65535");
+            return;
+        }
+
+        unless ( $poco = $conf->{games}->($game) ) {
+            $logger->info("Unknown Game $game, perhabs you forgot to specify a poco for it in the config ?");
+            return;
+        }
+
+        if ( !($path) ) {
+            $logger->error("We need a path for installation !");
+        }
+        else {
+            $logger->info("Starting PoCo for installation gameserver in $path ");
+            my $require_name = $poco;
+            $require_name =~ s/::/\//g;
+            $require_name .= '.pm';
+            eval { require $require_name; };
+            if ($@) { $logger->info("Error while compilling $poco: $@"); return; }
+            eval { $poco->create( path => $path, port => $port ); };
+
+            if ($@) { $logger->info("Error while starting $poco: $@ "); return; }
+
+        }
     }
     else {
-        $logger->warn( "invalid json sent: couldn' t understand command '" . $data->{command} . "'" );
+        $logger->warn( "invalid json sent: couldn't understand command '" . $data->{command} . "'" );
     }
 }
 
