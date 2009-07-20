@@ -8,7 +8,6 @@ use Carp;
 use File::Copy;
 use Archive::Tar;
 
-my $PACKAGE_DIR = "/home/Catepo/Packages/";
 my $logger = $main::logger;
 
 #
@@ -31,6 +30,9 @@ sub create {
     my $install;
     my $path;
     my $params;
+    my $port;
+    my $PACKAGE_DIR;
+
     if ( exists $options{'params'} ) {   
         $params = $options{'params'};
         delete $options{'params'};
@@ -45,6 +47,20 @@ sub create {
     else {
         $install = 0;
     }
+
+    if ( exists $options{'port'} ) {
+	$port = $options{'port'};
+        delete $options{'port'};
+    }
+
+    if ( exists $options{'packages'} ) {
+	$PACKAGE_DIR = $options{'packages'};
+	delete $options{'packages'};
+    }
+    else {
+        $logger->warn("Dont have the package dir ! Exiting...");
+	return;
+    }
     if ( exists $options{'path'} ) {       #
         $path = $options{'path'};
         delete $options{'path'};
@@ -52,7 +68,7 @@ sub create {
     else {
         croak( __PACKAGE__ . '->new needs a \'path\' option.' );
     }
-
+    
     if ( keys %options > 0 ) {
         carp( __PACKAGE__ . ': Unrecognized options in new(): ' . join( ', ', keys %options ) );
     }
@@ -60,7 +76,7 @@ sub create {
         inline_states => {
             _start            => \&start,               # received when the session starts
             _stop             => \&stop,                # received when the session is GC'ed
-            _install          => \&install,             # internal signal to set the gameserver up the first time
+            _install          => \&install,            # internal signal to set the gameserver up the first time
             _remove           => \&remove,              # internal signal to remove the gameserver from disc
             _stop_gameserver  => \&stop_gameserver,     # internal signal to stop the gameserver
             _start_gameserver => \&start_gameserver,    # internal signal to start the gameserver
@@ -76,10 +92,12 @@ sub create {
 
         },
         heap => {
-            install => $install,
-            path    => $path,
-            params  => $params,
-        }
+            install  => $install,
+            path     => $path,
+            params   => $params,
+            packages => $PACKAGE_DIR,
+	    port     => $port,
+	}
     );
 
 }
@@ -92,18 +110,18 @@ sub start {
 
     if ( -e "$path/srcds_run" && $install ) {
         $logger->warn( "You told me to install a gameserver, but it seems there is already one installed!" );
+    	return;
     }
     elsif ( ( !-e "$path/srcds_run" ) && !$install ) {
         $logger->warn( "There is no gameserver in $path, and you told me not to install one, aborting." );
+	return;
     }
 
-    # install or start it, for now we only implement starting.
     if ($install) {
-        POE::Kernel->alias_set($path . "_install");
-        POE::Kernel->yield('_install');
+	$logger->info("Starting installation of Gameserver in '$path'");
+	POE::Kernel->yield('_install');
     }
     else {
-        POE::Kernel->post('catepod' => $_[HEAP]->{path}, add_gameserver => 'none yet');
         POE::Kernel->alias_set($path);
         POE::Kernel->yield('_start_gameserver');
     }
@@ -113,22 +131,23 @@ sub start {
 sub start_gameserver {
 
     # workflow of this sub:
-    # the gameserver is installed and ready to be started, fire it up with given parameters.
+    # the gameserver is installed and ready to be started, fire it up with given parameters. - done
+    # find function to check whether the server is already running
+
     my $heap    = $_[HEAP];
     my $install = $heap->{install};
     my $path    = $heap->{path};
     my $params  = $heap->{params};
 
     chdir($path);
-    $logger->debug( "params: " . join( " ", @$params ) );
     my $child = POE::Wheel::Run->new(
-        Program     => ["./srcds_run", @$params], # srcds_run
+        Program     => ["./srcds_run", @$params], 
         StdoutEvent => "got_child_stdout",
         StderrEvent => "got_child_stderr",
         CloseEvent  => "got_child_close",
     ) or $logger->warn("Error: $!");
     $_[HEAP]->{wheel} = $child;
-    POE::Kernel->post('catepod' => $_[HEAP]->{path}, add_gameserver => $_[HEAP]->{wheel}->PID());
+    POE::Kernel->post('catepod', 'add_gameserver'  => $_[HEAP]->{path}, $_[HEAP]->{wheel}->PID());
 }
 
 sub child_stdout {
@@ -143,21 +162,21 @@ sub child_stderr {
 
 sub child_close {
     $logger->warn( __PACKAGE__ . " " . $_[HEAP]->{wheel}->PID() .  " gameserver exited." );
-	delete $_[HEAP]->{wheel};
+    delete $_[HEAP]->{wheel};
 }
 
 sub stop_gameserver {
     my $heap = $_[HEAP];
-    my ($shit, $foo, $bar, $port) = split("/", $heap->{path});
     my $path = $heap->{path};
+    my $port = $heap->{port};
 
     my $chkalias = 1;
     if ( $chkalias == 0 ) { #chk whether the gameserver is running...
         $logger->warn("There does not run a gameserver in '$path' with port '$port'");
-        POE::Kernel->yield('stop');
+    	return;
     }elsif ( !-e "$path/srcds_run" ) { #chk wheter the gameserver is installed
         $logger->warn("There isn't installed, a gameserver in '$path'");
-        POE::Kernel->yield('stop');
+    	return;
     }else {
             $_[HEAP]->{wheel}->kill(9);
             POE::Kernel->delay(sndstop => 4);
@@ -190,27 +209,44 @@ sub restart {
 sub install {
     my $heap = $_[HEAP];
     my $path = $heap->{path};
-    my ( $shit, $foo, $bar, $port ) = split ( "/", $path ); 
-    
-        if ( ! -e "$path/srcds_run" ) {
-            $logger->warn("There's allready a gameserver installed at $path");
-            POE::Kernel->yield('stop');
-        }else {
-            $logger->info("Starting installation of Gameserver in $path");
-            mkdir($path, 0777) or $logger->error("Couldn't create Installation dir $path: $!");
-            copy("$PACKAGE_DIR/css.tar", "$path/css.tar") or $logger->error("Couldn't copy css.tar to $path: $!");
-            chdir($path) or $logger->error("Couldn't chdir to $path: $!");
-            my $tar = Archive::Tar->new;
-            $tar->read('css.tar');
-            $tar->extract();
-            unlink('css.tar');
-        }
+    my $PACKAGE_DIR = $heap->{packages};
+    my $port = $heap->{port};
 
-    if ( $@ ) {
-        $logger->error("Couldn't install Gameserver successfully in $path: $@");
-    }else {
-        $logger->info("Installation completed successfully.");
-    }
+	unless ( $port >= 1024 && $port <= 65535 ) {
+	    $logger->info("We need a port to install the Gameserver");
+	    return;
+	}
+
+	my $file = $PACKAGE_DIR . "/counter-strike-source.tar";
+
+	if ( mkdir($path) eq 0 ) {
+	    $logger->warn("Error while creating directory '$path': $!");
+	    return;
+	}
+
+	if ( chdir($path) eq 0 ) {
+	    $logger->warn("Error while chainging directory to '$path'");
+	    return;
+	}
+
+	if ( copy($file, ".") eq 0 ) {
+	    $logger->warn("Error while copying '$file' to '$path': $!");
+	    return;
+ 	}
+	
+	my $tar = Archive::Tar->new;
+	if ( $tar->read($path . "counter-strike-source.tar", 1) eq "false" ) {
+	    $logger->warn("Error while reading tar archive: $path/counter-strike-source.tar: $!");
+            return;
+ 	}
+	$tar->extract();
+
+	if ( unlink($path . "/counter-strike-source.tar") eq "false" ) {
+	    $logger->warn("Error while deleting installation file: $!");
+	}
+
+	$logger->info("Installation finished successfull");
+	POE::Kernel->yield('_start_gameserver');
 }
 
 sub remove {

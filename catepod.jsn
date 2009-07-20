@@ -11,5 +11,6 @@
         "counter-strike":"Catepod::Gameserver::CounterStrike",
 	"day-of-defeat":"Catepod::Gameserver::DayOfDefeat",
 	"day-of-defeat-source":"Catepod::Gameserver::DayOfDefeatSource"
-    }
+    },
+"packagedir":"/home/Catepod/Packages/"
 }

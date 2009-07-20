@@ -1,1 +1,1 @@
-echo '{"command":"install", "path":"/home/gameserver/28000/", "game":"counter-strike-source", "port":28000}' > /tmp/gswi/socket
+echo '{"command":"start", "port":28000, "path":"/home/gameserver/28000/", "game":"counter-strike-source", "install":false, "params":["-game", "cstrike", "-port", "28000", "+map", "de_dust2", "+maxplayers", "12"]}' > /tmp/gswi/socket
