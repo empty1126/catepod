@@ -75,7 +75,7 @@ flock( $lockfile, LOCK_EX | LOCK_NB )
 print {$lockfile} $$ . "\n"
   or $logger->error("Couldn't write PID ($$) to $PIDFILE: $!");
 
-# dropping privileges
+#dropping the privileges
 drop_privileges($RUNAS_USER);
 
 POE::Session->create(
@@ -229,8 +229,57 @@ sub process_command {
     }
     elsif ( $data->{command} eq "stop" ) {
         my $path = $data->{path};
-        $logger->warn( "Attempting to stop Gameserver in: " . $path );
+        $logger->info( "Attempting to stop Gameserver in: " . $path );
         $_[KERNEL]->post( $path => '_shutdown' );
+    }
+    elsif ( $data->{command} eq "restart" ) {
+        my $path = $data->{path};
+        my $port = $data->{port};
+        $logger->info( "Attempting to restart Gameserver in: " . $path );
+        if ( !$_[KERNEL]->post( $path => 'stop' ) ) {
+            $logger->warn("Couldn't stop Server in $path, may there does not run a server ?: $!");
+            return;
+        }
+
+        if ( !$_[KERNEL]->post( $path => '_start_gameserver' ) ) {
+            $logger->warn("Couldn't start Server in $path: $!");
+            return;
+        }
+    }
+    elsif ( $data->{command} eq "install_mod" ) {
+        my $path        = $data->{path};
+        my $mod         = $data->{mod};
+        my $install     = $data->{install};
+        my $PACKAGE_DIR = $conf->{packagedir} . "/Addons/";
+        my $poco;
+
+        if ( !-e "$PACKAGE_DIR" ) {
+            $logger->warn("Addons directory '$PACKAGE_DIR' does not exists");
+            return;
+        }
+
+        if ( !-e "$path" ) {
+            $logger->warn("There isnt installed a gameserver in $path !");
+            return;
+        }
+
+        unless ( $poco = $conf->{mods}->{$mod} ) {
+            $logger->warn("Do not know what todo with $mod, perhabs you forgot to specify a poco for $mod ?");
+            return;
+        }
+
+        my $require_name = $poco;
+        $require_name =~ s/::/\//g;
+        $require_name .= '.pm';
+        eval { require $require_name; };
+        if ($@) { $logger->info("Error while compilling $poco: $@"); return; }
+        eval { $poco->create( path => $path, install => $install, mod => $mod, package_dir => $PACKAGE_DIR ); };
+
+        if ($@) {
+            $logger->info("Error while starting $poco: $@");
+            return;
+        }
+
     }
     else {
         $logger->warn( "invalid json sent: couldn't understand command '" . $data->{command} . "'" );

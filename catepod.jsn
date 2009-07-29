@@ -7,10 +7,43 @@
 "gswi_dir":"/home/",
 "games":
     {
-        "counter-strike-source":"Catepod::Gameserver::CounterStrikeSource",
-        "counter-strike":"Catepod::Gameserver::CounterStrike",
-	"day-of-defeat":"Catepod::Gameserver::DayOfDefeat",
-	"day-of-defeat-source":"Catepod::Gameserver::DayOfDefeatSource"
+        //Game                      //PoCo
+        //-----------------------------------------------------
+
+        "counter-strike-source"     :"Catepod::Gameserver::CounterStrikeSource",
+        "counter-strike"            :"Catepod::Gameserver::CounterStrike",
+	    "day-of-defeat"             :"Catepod::Gameserver::DayOfDefeat",
+	    "day-of-defeat-source"      :"Catepod::Gameserver::DayOfDefeatSource"
     },
-"packagedir":"/home/Catepod/Packages/"
+"packagedir":"/home/Catepod/Packages/",
+"mods":
+    {
+        //Game/MOD                  //PoCo
+        //-----------------------------------------------------
+
+        //Counterstrike 1.6       
+        "metamod"                   :"Catepod::Addons::MetaMod",
+        "amxmodx"                   :"Catepod::Addons::MetaModX",
+        "hlguard"                   :"Catepod::Addons::HLGuard",
+        "statsme"                   :"Catepod::Addons::StatsMe",
+        "zomebiehorde"              :"Catepod::Addons::ZomebieHorde",
+        //Day of defeat
+
+        //Counterstrike Source
+        "metamod-source"            :"Catepod::Addons::MetaModSource",
+        "eventscripts"              :"Catepod::Addons::EventScripts",
+        "gungame-source"            :"Catepod::Addons::GunGameSource",
+        "maniadmin-source"          :"Catepod::Addons::ManiAdminSource",
+        "noblock"                   :"Catepod::Addons::NoBlock",
+        "zblock"                    :"Catepod::Addons::zBlock",
+        "dos-attack-fix"            :"Catepod::Addons::DosAttackFix",
+        "rpg-source"                :"Catepod::Addons::RPGSource",
+        "sbdetox"                   :"Catepod::Addons::SBDetox",
+        "sourcemode"                :"Catepod::Addons::SourceMode",
+
+        //Day of defeat Source
+        "gungame-dods"              :"Catepod::Addons::GunGameDoDS",
+        "maniadmin-dods"            :"Catepod::Addons::ManiAdminDoDS"
+
+    }
 }

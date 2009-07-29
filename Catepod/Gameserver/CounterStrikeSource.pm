@@ -6,6 +6,7 @@ use POE;
 use POE::Wheel::Run;
 use Carp;
 use File::Copy;
+use File::Path;
 use Archive::Tar;
 
 my $logger = $main::logger;
@@ -21,7 +22,7 @@ my $logger = $main::logger;
 #
 
 sub create {
-    my $class = shift;    
+    my $class = shift;
     use Data::Dumper;
     if ( @_ & 1 ) {
         carp( __PACKAGE__ . '->new needs even number of options' );
@@ -32,15 +33,15 @@ sub create {
     my $params;
     my $port;
     my $PACKAGE_DIR;
-
-    if ( exists $options{'params'} ) {   
+   
+    if ( exists $options{'params'} ) {
         $params = $options{'params'};
         delete $options{'params'};
     }
     else {
         croak( __PACKAGE__ . '->new needs a \'params\' argument.' );
     }
-    if ( exists $options{'install'} ) { 
+    if ( exists $options{'install'} ) {
         $install = $options{'install'};
         delete $options{'install'};
     }
@@ -49,41 +50,43 @@ sub create {
     }
 
     if ( exists $options{'port'} ) {
-	$port = $options{'port'};
+        $port = $options{'port'};
         delete $options{'port'};
     }
 
     if ( exists $options{'packages'} ) {
-	$PACKAGE_DIR = $options{'packages'};
-	delete $options{'packages'};
+        $PACKAGE_DIR = $options{'packages'};
+        delete $options{'packages'};
     }
     else {
         $logger->warn("Dont have the package dir ! Exiting...");
-	return;
+        return;
     }
-    if ( exists $options{'path'} ) {       #
+    if ( exists $options{'path'} ) {    #
         $path = $options{'path'};
         delete $options{'path'};
     }
     else {
         croak( __PACKAGE__ . '->new needs a \'path\' option.' );
     }
-    
+
     if ( keys %options > 0 ) {
         carp( __PACKAGE__ . ': Unrecognized options in new(): ' . join( ', ', keys %options ) );
     }
+    
     POE::Session->create(
         inline_states => {
             _start            => \&start,               # received when the session starts
             _stop             => \&stop,                # received when the session is GC'ed
-            _install          => \&install,            # internal signal to set the gameserver up the first time
+            _install          => \&install,             # internal signal to set the gameserver up the first time
             _remove           => \&remove,              # internal signal to remove the gameserver from disc
             _stop_gameserver  => \&stop_gameserver,     # internal signal to stop the gameserver
             _start_gameserver => \&start_gameserver,    # internal signal to start the gameserver
+            _shutdown         => \&shutdown,            # the signal to use when you want this thing to shut down
+            _process_command  => \&process_command      # the signal to use when you want to send a command to the server
             stop_gameserver   => \&stop_gameserver,     # the signal to use when you want this thing to get stopped
-            start_gameserver  => \&start_gameserver,    #the signal to use when you want this thing to get started
-            sndstop           => \&sndstop,             #the signal to send the SIGKILL
-            _shutdown         => \&shutdown,             # the signal to use when you want this thing to shut down
+            start_gameserver  => \&start_gameserver,    # the signal to use when you want this thing to get started
+            sndstop           => \&sndstop,             # the signal to send the SIGKILL
             restart           => \&restart,             # signal sent when the gameserver should be restarted
                                                         # signals for the Wheel
             got_child_stdout  => \&child_stdout,
@@ -96,8 +99,8 @@ sub create {
             path     => $path,
             params   => $params,
             packages => $PACKAGE_DIR,
-	    port     => $port,
-	}
+            port     => $port,
+        }
     );
 
 }
@@ -108,18 +111,22 @@ sub start {
     my $path    = $heap->{path};
     my $params  = $heap->{params};
 
-    if ( -e "$path/srcds_run" && $install ) {
-        $logger->warn( "You told me to install a gameserver, but it seems there is already one installed!" );
-    	return;
+    if ( -e "$path/srcds_run" && $install != "remove" ) {
+        $logger->warn("You told me to install a gameserver, but it seems there is already one installed!");
+        return;
     }
     elsif ( ( !-e "$path/srcds_run" ) && !$install ) {
-        $logger->warn( "There is no gameserver in $path, and you told me not to install one, aborting." );
-	return;
+        $logger->warn("There is no gameserver in $path, and you told me not to install one, aborting.");
+        return;
     }
 
-    if ($install) {
-	$logger->info("Starting installation of Gameserver in '$path'");
-	POE::Kernel->yield('_install');
+    if ($install eq 'remove') {
+        $logger->info("Starting deinstallation of Gameserverin '$path'");
+        POE::Kernel->yield('_remove');
+    }
+    elsif ($install) {
+        $logger->info("Starting installation of Gameserver in '$path'");
+        POE::Kernel->yield('_install');
     }
     else {
         POE::Kernel->alias_set($path);
@@ -141,13 +148,13 @@ sub start_gameserver {
 
     chdir($path);
     my $child = POE::Wheel::Run->new(
-        Program     => ["./srcds_run", @$params], 
+        Program     => [ "./srcds_run", @$params ],
         StdoutEvent => "got_child_stdout",
         StderrEvent => "got_child_stderr",
         CloseEvent  => "got_child_close",
     ) or $logger->warn("Error: $!");
     $_[HEAP]->{wheel} = $child;
-    POE::Kernel->post('catepod', 'add_gameserver'  => $_[HEAP]->{path}, $_[HEAP]->{wheel}->PID());
+    
 }
 
 sub child_stdout {
@@ -157,11 +164,11 @@ sub child_stdout {
 
 sub child_stderr {
     my $text = $_[ARG0];
-    $logger->warn( __PACKAGE__ . " " . $_[HEAP]->{wheel}->PID() .  " ERROR: $text" );
+    $logger->warn( __PACKAGE__ . " " . $_[HEAP]->{wheel}->PID() . " ERROR: $text" );
 }
 
 sub child_close {
-    $logger->warn( __PACKAGE__ . " " . $_[HEAP]->{wheel}->PID() .  " gameserver exited." );
+    $logger->warn( __PACKAGE__ . " " . $_[HEAP]->{wheel}->PID() . " gameserver exited." );
     delete $_[HEAP]->{wheel};
 }
 
@@ -171,26 +178,28 @@ sub stop_gameserver {
     my $port = $heap->{port};
 
     my $chkalias = 1;
-    if ( $chkalias == 0 ) { #chk whether the gameserver is running...
+    if ( $chkalias == 0 ) {    #check whether the gameserver runs already ...
         $logger->warn("There does not run a gameserver in '$path' with port '$port'");
-    	return;
-    }elsif ( !-e "$path/srcds_run" ) { #chk wheter the gameserver is installed
+        return;
+    }
+    elsif ( !-e "$path/srcds_run" ) {    #check whether the gameserver is installed
         $logger->warn("There isn't installed, a gameserver in '$path'");
-    	return;
-    }else {
-            $_[HEAP]->{wheel}->kill(9);
-            POE::Kernel->delay(sndstop => 4);
-    
-            if ( $@ ) { $logger->warn("There some error's while killing Gameserver in '$path'"); }
-            else {
-                $logger->info("Gameserver has stopped successfull.");
-            }
-            
+        return;
+    }
+    else {
+        $_[HEAP]->{wheel}->kill(9);
+        POE::Kernel->delay( sndstop => 4 );
+
+        if ($!) { $logger->warn("There some error's while killing Gameserver in '$path': $!"); }
+        else {
+            $logger->info("Gameserver has stopped successfull.");
+        }
+
     }
 }
 
 sub sndstop {
-    $logger->info("Attempting to kill Gameserver " . $_[HEAP]->{wheel}->PID() . " with SIGKILL" );
+    $logger->info( "Attempting to kill Gameserver " . $_[HEAP]->{wheel}->PID() . " with SIGKILL" );
     $_[HEAP]->{wheel}->kill(15);
 }
 
@@ -200,65 +209,126 @@ sub stop {
     $logger->info( __PACKAGE__ . " stopping." );
 }
 
+sub process_command {
+    # Workflow
+    # send the commands from $_[ARG0] to the server
+
+    my $command = $_[ARG0];
+
+    $logger->info("Did receive command: '$command'.");
+
+
+}
+
 sub restart {
 
-    # restart the running gameserver. error if no gameserver is running.
-    $logger->warn("restart not implemented yet");
+    # Workflow
+    # -stop the gameserver (error message if server does not run)
+    # -start the server (error will come from _start_gameserver)
+    # -if there aren't errors, informate the logger
+
+    my $heap = $_[HEAP];
+    my $path = $heap->{path};
+
+    POE::Kernel->yield('_stop_gameserver');
+    POE::Kernel->yield('_start_gameserver');
+
+    $logger->info("Gameserver in $path did restart succesfull.");
 }
 
 sub install {
-    my $heap = $_[HEAP];
-    my $path = $heap->{path};
+    my $heap        = $_[HEAP];
+    my $path        = $heap->{path};
     my $PACKAGE_DIR = $heap->{packages};
-    my $port = $heap->{port};
+    my $port        = $heap->{port};
 
-	unless ( $port >= 1024 && $port <= 65535 ) {
-	    $logger->info("We need a port to install the Gameserver");
-	    return;
-	}
+    unless ( $port >= 1024 && $port <= 65535 ) {
+        $logger->info("We need a port to install the Gameserver");
+        return;
+    }
 
-	my $file = $PACKAGE_DIR . "/counter-strike-source.tar";
+    my $file = $PACKAGE_DIR . "/counter-strike-source.tar";
 
-	if ( mkdir($path) eq 0 ) {
-	    $logger->warn("Error while creating directory '$path': $!");
-	    return;
-	}
+    if ( mkdir($path) eq 0 ) {
+        $logger->warn("Error while creating directory '$path': $!");
+        return;
+    }
 
-	if ( chdir($path) eq 0 ) {
-	    $logger->warn("Error while chainging directory to '$path'");
-	    return;
-	}
+    if ( chdir($path) eq 0 ) {
+        $logger->warn("Error while chainging directory to '$path'");
+        return;
+    }
 
-	if ( copy($file, ".") eq 0 ) {
-	    $logger->warn("Error while copying '$file' to '$path': $!");
-	    return;
- 	}
-	
-	my $tar = Archive::Tar->new;
-	if ( $tar->read($path . "counter-strike-source.tar", 1) eq "false" ) {
-	    $logger->warn("Error while reading tar archive: $path/counter-strike-source.tar: $!");
-            return;
- 	}
-	$tar->extract();
+    if ( copy( $file, "." ) eq 0 ) {
+        $logger->warn("Error while copying '$file' to '$path': $!");
+        return;
+    }
 
-	if ( unlink($path . "/counter-strike-source.tar") eq "false" ) {
-	    $logger->warn("Error while deleting installation file: $!");
-	}
+    my $tar = Archive::Tar->new;
+    if ( $tar->read( $path . "counter-strike-source.tar", 1 ) eq "false" ) {
+        $logger->warn("Error while reading tar archive: $path/counter-strike-source.tar: $!");
+        return;
+    }
+    $tar->extract();
 
-	$logger->info("Installation finished successfull");
-	POE::Kernel->yield('_start_gameserver');
+    if ( unlink( $path . "/counter-strike-source.tar" ) eq "false" ) {
+        $logger->warn("Error while deleting installation file: $!");
+    }
+
+    $logger->info("Installation finished successfull");
+    POE::Kernel->alias_set($path);
+    POE::Kernel->yield('_start_gameserver');
 }
 
 sub remove {
+    #workflow of this sub:
+    #yield the signal to stop gameserver, after that
+    #we can savely remove the gameserver, after that
+    #informate a log-info-message
 
-    # the gameserver was stopped, and now we can safely uninstall it.
-    $logger->warn("remove not implemented yet");
+    my $heap = $_[HEAP];
+    my $path = $heap->{path};
+    my $port = $heap->{port};
 
+    unless ( $port ) {
+        $logger->warn("Dont have a server port. Exiting.");
+        return;
+    }
+
+    unless ( $path ) {
+        $logger->warn("We can not remove a gameserver without the server part. Exiting.");
+        return;
+    }
+
+    my $chkalias = 0; #1=the server runs, 0=the server do not run
+    if ( $chkalias == 1 ) {
+        $logger->info("Stopping Gameserver in $path, with port '$port'");
+        POE::Kernel->yield('_stop_gameserver');
+        
+            if ( $! ) {
+                $logger->warn("Error while stopping gameserver in $path: $!");
+                return;
+            }
+    }
+    
+    if ( ! chdir($path) ) {
+        $logger->warn("Couldnt chdir to $path: $!");
+        return;
+    }
+
+
+    if ( ! rmtree($path) ) {
+        $logger->warn("Couldn't delete directoy from gameserver in $path: $!");
+        return;
+    }
+
+    $logger->info("Deinstallation finished succesfull in $path.");
 }
 
 sub shutdown {
-    POE::Kernel->alias_remove($_[HEAP]->{path});
+    POE::Kernel->alias_remove( $_[HEAP]->{path} );
     POE::Kernel->yield('_stop_gameserver');
+
     # check whether we are supposed to uninstall the gameserver as well
     # call _stop_gameserver, then remove if appropriate.
     # remove wheels so that the session can be GC'ed

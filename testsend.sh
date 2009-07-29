@@ -1,1 +1,1 @@
-echo '{"command":"start", "port":28000, "path":"/home/gameserver/28000/", "game":"counter-strike-source", "install":false, "params":["-game", "cstrike", "-port", "28000", "+map", "de_dust2", "+maxplayers", "12"]}' > /tmp/gswi/socket
+echo '{"command":"install_mod", "path":"/home/gameserver/27015/", "install":false, "mod":"metamod-source"}' > /tmp/gswi/socket
