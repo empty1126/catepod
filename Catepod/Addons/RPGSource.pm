@@ -1,4 +1,4 @@
-package Catepod::Addons::MetaModSource;
+package Catepod::Addons::RPGSource;
 
 use strict;
 use warnings;
@@ -113,6 +113,14 @@ sub install {
         return;
     }
 
+    # we need to check whether the required addons are installed,
+    # for here, we need the metamod plugin
+
+    if ( !-e "$path/cstrike/addons/metamod/" ) {
+        $logger->warn("Couldn't find required addon metamod, without it, " . __PACKAGE__ . " wont work");
+        return;    
+    }
+
     if ( !copy( "$PACKAGE_DIR/$mod.tar", "cstrike/" ) ) {
         $logger->warn("Error while copying file '$mod.tar' to $path: $!");
         return;
@@ -131,6 +139,15 @@ sub install {
     if ( !unlink("$mod.tar") ) {
         $logger->warn("Couldn't delete tar-installation file '$mod.tar': $!");
     }
+
+    #the mod has been installed,
+    #for now, we need to write a line into the metamod file
+
+    open ( my $filehandle, '>>', "$path/cstrike/addons/metamod/metaplugins.ini");
+
+    my $line = "addons/cssrpg/bin/cssrpg_mm ;CSS:RPG Plugin ;Added by Catepod";
+    print $filehandle "$line\n";
+    close $filehandle;
 
     $logger->info("Installation did complete sucessfull");
 
@@ -151,12 +168,27 @@ sub remove {
         return;
     }
 
-    if ( !-e "cstrike/addons/metamod/" ) {
-        $logger->warn( __PACKAGE__ . " have not been installed, yet " );
-        return;
+    my $file = "$path/cstrike/addons/metamod/metaplugins.ini";
+    open ( my $filehandle, '<', $file  ) or $logger->info("Could not open $file: $!");
+
+    my @slurp = <$filehandle>;
+    close $filehandle;
+    my @new_file;
+
+    foreach my $current_line (@slurp) {
+        if ( $current_line =~ /*RPG Plugin*/ ) { #found strings in metaplugins.ini and replace them
+            push @new_file, $current_line;
+        }   
     }
 
-    if ( !rmtree("$path/cstrike/addons/metamod") ) {
+        my ( $first, $secound ) = split ( "@new_file", "@slurp" );
+        my $newfile = "$first $secound";
+        
+        open ( $filehandle, '>', $file );
+        print $filehandle $newfile;
+        close $filehandle;
+
+    if ( !rmtree("$path/dwadawdawcstrike/dwadwadawaddons/metamod") ) {
         $logger->warn("Couldn't delete tree '$path/cstrike/addons/metamod': $!");
         return;
     }

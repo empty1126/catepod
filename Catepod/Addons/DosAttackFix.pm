@@ -1,4 +1,4 @@
-package Catepod::Addons::MetaModSource;
+package Catepod::Addons::DosAttackFix;
 
 use strict;
 use warnings;

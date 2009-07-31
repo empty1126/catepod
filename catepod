@@ -271,6 +271,7 @@ sub process_command {
         my $require_name = $poco;
         $require_name =~ s/::/\//g;
         $require_name .= '.pm';
+        $logger->info("$path, $install, $mod, $PACKAGE_DIR");
         eval { require $require_name; };
         if ($@) { $logger->info("Error while compilling $poco: $@"); return; }
         eval { $poco->create( path => $path, install => $install, mod => $mod, package_dir => $PACKAGE_DIR ); };

@@ -1,4 +1,4 @@
-package Catepod::Addons::MetaModSource;
+package Catepod::Addons::MetaMod;
 
 use strict;
 use warnings;
@@ -44,6 +44,7 @@ sub create {
     }
 
     $mod = $options{'mod'};
+    delete $options{'mod'};
 
     if ( exists $options{'package_dir'} ) {
         $PACKAGE_DIR = $options{'package_dir'};
@@ -86,8 +87,13 @@ sub start {
     my $path    = $heap->{path};
     my $mod     = $heap->{mod};
 
-    if ($install) {
+    if ($install eq "install" ) {
         $logger->info( "Install " . __PACKAGE__ . " to gameserver in $path" );
+        POE::Kernel->yield("_install");
+    }
+    elsif ( $install eq "reinstall" ) {
+        $logger->info( "Reinstall " . __PACKAGE__ . " for gameserver in $path" );
+        POE::Kernel->yield("_remove");
         POE::Kernel->yield("_install");
     }
     else {

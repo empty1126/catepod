@@ -1,4 +1,4 @@
-package Catepod::Addons::MetaModSource;
+package Catepod::Addons::ManiAdminDoDS;
 
 use strict;
 use warnings;

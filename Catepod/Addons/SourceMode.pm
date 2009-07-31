@@ -1,4 +1,4 @@
-package Catepod::Addons::MetaModSource;
+package Catepod::Addons::SourceMode;
 
 use strict;
 use warnings;
@@ -9,11 +9,6 @@ use File::Path;
 use Archive::Tar;
 
 my $logger = $main::logger;
-
-#
-# Workflow
-#
-#
 
 sub create {
     my $class = shift;

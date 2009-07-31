@@ -33,7 +33,7 @@ sub create {
     my $params;
     my $port;
     my $PACKAGE_DIR;
-   
+
     if ( exists $options{'params'} ) {
         $params = $options{'params'};
         delete $options{'params'};
@@ -73,22 +73,23 @@ sub create {
     if ( keys %options > 0 ) {
         carp( __PACKAGE__ . ': Unrecognized options in new(): ' . join( ', ', keys %options ) );
     }
-    
+
     POE::Session->create(
         inline_states => {
-            _start            => \&start,               # received when the session starts
-            _stop             => \&stop,                # received when the session is GC'ed
-            _install          => \&install,             # internal signal to set the gameserver up the first time
-            _remove           => \&remove,              # internal signal to remove the gameserver from disc
-            _stop_gameserver  => \&stop_gameserver,     # internal signal to stop the gameserver
-            _start_gameserver => \&start_gameserver,    # internal signal to start the gameserver
-            _shutdown         => \&shutdown,            # the signal to use when you want this thing to shut down
-            _process_command  => \&process_command      # the signal to use when you want to send a command to the server
-            stop_gameserver   => \&stop_gameserver,     # the signal to use when you want this thing to get stopped
-            start_gameserver  => \&start_gameserver,    # the signal to use when you want this thing to get started
-            sndstop           => \&sndstop,             # the signal to send the SIGKILL
-            restart           => \&restart,             # signal sent when the gameserver should be restarted
-                                                        # signals for the Wheel
+            _start            => \&start,              # received when the session starts
+            _stop             => \&stop,               # received when the session is GC'ed
+            _install          => \&install,            # internal signal to set the gameserver up the first time
+            _remove           => \&remove,             # internal signal to remove the gameserver from disc
+            _stop_gameserver  => \&stop_gameserver,    # internal signal to stop the gameserver
+            _start_gameserver => \&start_gameserver,   # internal signal to start the gameserver
+            _shutdown         => \&shutdown,           # the signal to use when you want this thing to shut down
+            _process_command  => \&process_command     # the signal to use when you want to send a command to the server
+            stop_gameserver   => \&stop_gameserver,    # the signal to use when you want this thing to get stopped
+            start_gameserver  => \&start_gameserver,   # the signal to use when you want this thing to get started
+            sndstop           => \&sndstop,            # the signal to send the SIGKILL
+            restart           => \&restart,            # signal sent when the gameserver should be restarted
+            
+            #signals for the wheel
             got_child_stdout  => \&child_stdout,
             got_child_stderr  => \&child_stderr,
             got_child_close   => \&child_close,
@@ -120,7 +121,7 @@ sub start {
         return;
     }
 
-    if ($install eq 'remove') {
+    if ( $install eq 'remove' ) {
         $logger->info("Starting deinstallation of Gameserverin '$path'");
         POE::Kernel->yield('_remove');
     }
@@ -154,7 +155,7 @@ sub start_gameserver {
         CloseEvent  => "got_child_close",
     ) or $logger->warn("Error: $!");
     $_[HEAP]->{wheel} = $child;
-    
+
 }
 
 sub child_stdout {
@@ -210,13 +211,13 @@ sub stop {
 }
 
 sub process_command {
+
     # Workflow
     # send the commands from $_[ARG0] to the server
 
     my $command = $_[ARG0];
 
     $logger->info("Did receive command: '$command'.");
-
 
 }
 
@@ -281,6 +282,7 @@ sub install {
 }
 
 sub remove {
+
     #workflow of this sub:
     #yield the signal to stop gameserver, after that
     #we can savely remove the gameserver, after that
@@ -290,34 +292,33 @@ sub remove {
     my $path = $heap->{path};
     my $port = $heap->{port};
 
-    unless ( $port ) {
+    unless ($port) {
         $logger->warn("Dont have a server port. Exiting.");
         return;
     }
 
-    unless ( $path ) {
+    unless ($path) {
         $logger->warn("We can not remove a gameserver without the server part. Exiting.");
         return;
     }
 
-    my $chkalias = 0; #1=the server runs, 0=the server do not run
+    my $chkalias = 0;    #1=the server runs, 0=the server do not run
     if ( $chkalias == 1 ) {
         $logger->info("Stopping Gameserver in $path, with port '$port'");
         POE::Kernel->yield('_stop_gameserver');
-        
-            if ( $! ) {
-                $logger->warn("Error while stopping gameserver in $path: $!");
-                return;
-            }
+
+        if ($!) {
+            $logger->warn("Error while stopping gameserver in $path: $!");
+            return;
+        }
     }
-    
-    if ( ! chdir($path) ) {
+
+    if ( !chdir($path) ) {
         $logger->warn("Couldnt chdir to $path: $!");
         return;
     }
 
-
-    if ( ! rmtree($path) ) {
+    if ( !rmtree($path) ) {
         $logger->warn("Couldn't delete directoy from gameserver in $path: $!");
         return;
     }

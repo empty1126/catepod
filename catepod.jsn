@@ -23,7 +23,7 @@
 
         //Counterstrike 1.6       
         "metamod"                   :"Catepod::Addons::MetaMod",
-        "amxmodx"                   :"Catepod::Addons::MetaModX",
+        "amxmodx"                   :"Catepod::Addons::AmXMoDX",
         "hlguard"                   :"Catepod::Addons::HLGuard",
         "statsme"                   :"Catepod::Addons::StatsMe",
         "zomebiehorde"              :"Catepod::Addons::ZomebieHorde",
