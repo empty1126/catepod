@@ -1,4 +1,4 @@
-package Catepod::Gameserver::CounterStrikeSource;
+package Catepod::Gameserver::CounterStrike;
 
 use strict;
 use warnings;
@@ -112,20 +112,20 @@ sub start {
     my $path    = $heap->{path};
     my $params  = $heap->{params};
 
-    if ( -e "$path/srcds_run" && $install != "remove" ) {
+    if ( -e "$path/hlds_run" && $install != "remove" ) {
         $logger->warn("You told me to install a gameserver, but it seems there is already one installed!");
         return;
     }
-    elsif ( ( !-e "$path/srcds_run" ) && !$install ) {
+    elsif ( ( !-e "$path/hlds_run" ) && !$install ) {
         $logger->warn("There is no gameserver in $path, and you told me not to install one, aborting.");
         return;
     }
 
-    if ( $install eq 'remove' ) {
+    if ( $install eq "remove" ) {
         $logger->info("Starting deinstallation of Gameserverin '$path'");
         POE::Kernel->yield('_remove');
     }
-    elsif ($install) {
+    elsif ($install eq "install" ) {
         $logger->info("Starting installation of Gameserver in '$path'");
         POE::Kernel->yield('_install');
     }
@@ -149,7 +149,7 @@ sub start_gameserver {
 
     chdir($path);
     my $child = POE::Wheel::Run->new(
-        Program     => [ "./srcds_run", @$params ],
+        Program     => [ "./hlds_run", @$params ],
         StdoutEvent => "got_child_stdout",
         StderrEvent => "got_child_stderr",
         CloseEvent  => "got_child_close",
@@ -183,7 +183,7 @@ sub stop_gameserver {
         $logger->warn("There does not run a gameserver in '$path' with port '$port'");
         return;
     }
-    elsif ( !-e "$path/srcds_run" ) {    #check whether the gameserver is installed
+    elsif ( !-e "$path/hlds_run" ) {    #check whether the gameserver is installed
         $logger->warn("There isn't installed, a gameserver in '$path'");
         return;
     }
@@ -248,7 +248,7 @@ sub install {
         return;
     }
 
-    my $file = $PACKAGE_DIR . "/counter-strike-source.tar";
+    my $file = $PACKAGE_DIR . "/counter-strike.tar";
 
     if ( mkdir($path) eq 0 ) {
         $logger->warn("Error while creating directory '$path': $!");
@@ -266,13 +266,13 @@ sub install {
     }
 
     my $tar = Archive::Tar->new;
-    if ( $tar->read( $path . "counter-strike-source.tar", 1 ) eq "false" ) {
+    if ( $tar->read( $path . "counter-strike.tar", 1 ) eq "false" ) {
         $logger->warn("Error while reading tar archive: $path/counter-strike-source.tar: $!");
         return;
     }
     $tar->extract();
 
-    if ( unlink( $path . "/counter-strike-source.tar" ) eq "false" ) {
+    if ( unlink( $path . "/counter-strike.tar" ) eq "false" ) {
         $logger->warn("Error while deleting installation file: $!");
     }
 

@@ -204,7 +204,7 @@ sub remove {
     close $filehandle;
 
     my @new_file = grep { $_ !~ m/.*AmXMoDX.*$/} @slurp;
-
+    
     open( $filehandle, '>', $file );
     print {$filehandle} $_ foreach @new_file;
     close $filehandle;
@@ -215,7 +215,7 @@ sub remove {
         return;
     }
 
-    $logger->info("Deinstallation did complete sucessfull.");
+    $logger->info("Deinstallation completed sucessfull.");
 
 }
 

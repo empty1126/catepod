@@ -8,6 +8,11 @@ use File::Copy;
 use File::Path;
 use Archive::Tar;
 
+# Installation
+#  -Installation
+#  linux addons/hlguard/dlls/hlguard_mm_i586.so
+
+
 my $logger = $main::logger;
 
 sub create {
@@ -39,6 +44,7 @@ sub create {
     }
 
     $mod = $options{'mod'};
+    delete $options{'mod'};
 
     if ( exists $options{'package_dir'} ) {
         $PACKAGE_DIR = $options{'package_dir'};
@@ -81,11 +87,16 @@ sub start {
     my $path    = $heap->{path};
     my $mod     = $heap->{mod};
 
-    if ($install) {
+    if ($install eq "install" ) {
         $logger->info( "Install " . __PACKAGE__ . " to gameserver in $path" );
         POE::Kernel->yield("_install");
     }
-    else {
+    elsif ( $install eq "reinstall" ) {
+        $logger->info ( "Reinstall " . __PACKAGE__ . " for gameserver in $path" );
+        POE::Kernel->yield("_remove");
+        POE::Kernel->yield("_install");
+    }
+    elsif ( $install eq "remove" ) {
         $logger->info( "Deinstall " . __PACKAGE__ . " from gameserver in $path" );
         POE::Kernel->yield("_remove");
     }
@@ -98,10 +109,23 @@ sub stop {
 }
 
 sub install {
+
+    #
+    # Workflow:
+    #  -Check whether the mod is already installed
+    #  -Edit metamod file
+    #  -inform logger if there're failures
+    #
+
     my $heap        = $_[HEAP];
     my $path        = $heap->{path};
     my $PACKAGE_DIR = $heap->{package_dir};
     my $mod         = $heap->{mod};
+
+    if ( !-e "$path/cstrike/addons/metamod/" ) {
+        $logger->warn("Required plugin MetaMod has not been installed, yet");
+        return;    
+    }
 
     if ( !chdir($path) ) {
         $logger->warn("Couldn't chdir to $path: $!");
@@ -127,11 +151,32 @@ sub install {
         $logger->warn("Couldn't delete tar-installation file '$mod.tar': $!");
     }
 
+    my $filename = "$path/cstrike/addons/metamod/plugins.ini";
+
+    my $filehandle;
+    unless ( open ( $filehandle, '>>', $filename ) ) {
+        $logger->warn("Couldn't open $filename for writing: $!");
+        return;
+    }
+
+        print $filehandle "linux addons/hlguard/dlls/hlguard_mm_i686.so ;HLGuard ;added by catepod" . "\n";
+        close $filehandle;
+    
+
     $logger->info("Installation did complete sucessfull");
 
 }
 
 sub remove {
+
+    #
+    # Workflow:
+    #  -Check whether the mod has been installed
+    #  -Edit the metamodfile
+    #  -remove sourcefiles from disc
+    #  -inform the logger if errors
+    #
+
     my $heap = $_[HEAP];
     my $path = $heap->{path};
     my $mod  = $heap->{mod};
@@ -146,17 +191,30 @@ sub remove {
         return;
     }
 
-    if ( !-e "cstrike/addons/metamod/" ) {
+    if ( !-e "cstrike/addons/hlguard/" ) {
         $logger->warn( __PACKAGE__ . " have not been installed, yet " );
         return;
     }
 
-    if ( !rmtree("$path/cstrike/addons/metamod") ) {
-        $logger->warn("Couldn't delete tree '$path/cstrike/addons/metamod': $!");
+    my $file = "$path/cstrike/addons/metamod/plugins.ini";
+    open( my $filehandle, '<', $file ) or $logger->info("Could not open $file: $!");
+
+    my @slurp = <$filehandle>;
+    close $filehandle;
+
+    my @new_file = grep { $_ !~ m/.*HLGuard.*$/} @slurp;
+    
+    open( $filehandle, '>', $file );
+    print {$filehandle} $_ foreach @new_file;
+    close $filehandle;
+
+    my $tree = "$path/cstrike/addons/hlguard/";
+    if ( !rmtree($tree) ) {
+        $logger->warn("Couldn't delete tree $tree: $!");
         return;
     }
 
-    $logger->info("Deinstallation did complete sucessfull.");
+    $logger->info("Deinstallation completed sucessfull.");
 
 }
 

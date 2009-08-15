@@ -138,6 +138,18 @@ sub install {
         $logger->warn("Couldn't delete tar-installation file '$mod.tar': $!");
     }
 
+    my $file = "$path/cstrike/liblist.gam";
+
+    open ( my $filehandle, '<', $file );
+    my @slurp = <$filehandle>;
+    close $filehandle;
+
+    my @new_file = grep { $_ !~ m/.*gamedll_linux.*$/ } @slurp;
+
+    open ( my $filehandle, '>', $file );
+    print $filehandle $_ foreach @new_file;
+    print $filehandle 'gamedll_linux "addons/metamod/dlls/metamod_i386.so"';
+    close $filehandle;
     $logger->info("Installation did complete sucessfull");
 
 }
