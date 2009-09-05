@@ -1,1 +1,1 @@
-echo '{"command":"install_mod", "path":"/home/gameserver/29000/", "install":"install", "mod":"hlguard"}' > /tmp/gswi/socket
+echo '{"command":"start", "path":"/home/gameserver/27015/", "port":27015, "params":["-game", "cstrike", "+map", "de_dust2", "-port", "27015"], "install":"install", "game":"counter-strike-source"}' > /tmp/gswi/socket

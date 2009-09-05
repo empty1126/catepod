@@ -129,6 +129,11 @@ sub start {
         $logger->info("Starting installation of Gameserver in '$path'");
         POE::Kernel->yield('_install');
     }
+    elsif ( $install eq "reinstall" ) {
+        $logger->info("Starting reinstallation of Gameserver in '$path'");
+        POE::Kernel->yield('_remove');
+        POE::Kernel->yield('_install');
+    }
     else {
         POE::Kernel->alias_set($path);
         POE::Kernel->yield('_start_gameserver');
@@ -248,7 +253,12 @@ sub install {
         return;
     }
 
-    my $file = $PACKAGE_DIR . "/counter-strike.tar";
+    if ( -e "$path/hlds_run" ) {
+        $logger->warn("It seems, that there is already installed a gameserver in $path");
+        return;
+    }
+
+    my $file = $PACKAGE_DIR . "/Gameserver/counter-strike.tar";
 
     if ( mkdir($path) eq 0 ) {
         $logger->warn("Error while creating directory '$path': $!");
@@ -272,7 +282,7 @@ sub install {
     }
     $tar->extract();
 
-    if ( unlink( $path . "/counter-strike.tar" ) eq "false" ) {
+    if ( !unlink( $path . "/counter-strike.tar" ) ) {
         $logger->warn("Error while deleting installation file: $!");
     }
 

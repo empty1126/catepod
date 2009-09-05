@@ -121,12 +121,17 @@ sub start {
         return;
     }
 
-    if ( $install eq 'remove' ) {
-        $logger->info("Starting deinstallation of Gameserverin '$path'");
+    if ( $install eq "remove" ) {
+        $logger->info("Starting deinstallation of Gameserver in '$path'");
         POE::Kernel->yield('_remove');
     }
-    elsif ($install) {
+    elsif ($install eq "install" ) {
         $logger->info("Starting installation of Gameserver in '$path'");
+        POE::Kernel->yield('_install');
+    }
+    elsif ( $install eq "reinstall" ) {
+        $logger->info("Starting reinstallation of Gameserver in '$path'");
+        POE::Kernel->yield('_remove');
         POE::Kernel->yield('_install');
     }
     else {
@@ -248,7 +253,7 @@ sub install {
         return;
     }
 
-    my $file = $PACKAGE_DIR . "/counter-strike-source.tar";
+    my $file = $PACKAGE_DIR . "/Gameserver/counter-strike-source.tar";
 
     if ( mkdir($path) eq 0 ) {
         $logger->warn("Error while creating directory '$path': $!");
@@ -266,13 +271,13 @@ sub install {
     }
 
     my $tar = Archive::Tar->new;
-    if ( $tar->read( $path . "counter-strike-source.tar", 1 ) eq "false" ) {
+    if ( !$tar->read( $path . "counter-strike-source.tar", 1 ) ) {
         $logger->warn("Error while reading tar archive: $path/counter-strike-source.tar: $!");
         return;
     }
     $tar->extract();
 
-    if ( unlink( $path . "/counter-strike-source.tar" ) eq "false" ) {
+    if ( !unlink( $path . "/counter-strike-source.tar" ) ) {
         $logger->warn("Error while deleting installation file: $!");
     }
 

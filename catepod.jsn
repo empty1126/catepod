@@ -15,7 +15,7 @@
 	    "day-of-defeat"             :"Catepod::Gameserver::DayOfDefeat",
 	    "day-of-defeat-source"      :"Catepod::Gameserver::DayOfDefeatSource"
     },
-"packagedir":"/home/Catepod/Packages/",
+"packagedir":"/home/Catepod/",
 "mods":
     {
         //Game/MOD                  //PoCo
