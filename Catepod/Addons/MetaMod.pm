@@ -10,11 +10,6 @@ use Archive::Tar;
 
 my $logger = $main::logger;
 
-#
-# Workflow
-#
-#
-
 sub create {
     my $class = shift;
     use Data::Dumper;
@@ -92,11 +87,11 @@ sub start {
         POE::Kernel->yield("_install");
     }
     elsif ( $install eq "reinstall" ) {
-        $logger->info( "Reinstall " . __PACKAGE__ . " for gameserver in $path" );
+        $logger->info ( "Reinstall " . __PACKAGE__ . " for gameserver in $path" );
         POE::Kernel->yield("_remove");
         POE::Kernel->yield("_install");
     }
-    else {
+    elsif ( $install eq "remove" ) {
         $logger->info( "Deinstall " . __PACKAGE__ . " from gameserver in $path" );
         POE::Kernel->yield("_remove");
     }
@@ -109,10 +104,25 @@ sub stop {
 }
 
 sub install {
+
+    #
+    # Workflow:
+    #  -Check whether the mod is already installed
+    #  -Edit metamod file
+    #  -inform logger if there're failures
+    #
+
     my $heap        = $_[HEAP];
     my $path        = $heap->{path};
     my $PACKAGE_DIR = $heap->{package_dir};
     my $mod         = $heap->{mod};
+
+    #mal noch checken, ob der mod bereits installiert wurde
+    
+    if ( -e "$path/cstrike/addons/metamod" ) {
+        $logger->warn("It seems, that " . __PACKAGE__ . " has already been installed.");
+        return;
+    }
 
     if ( !chdir($path) ) {
         $logger->warn("Couldn't chdir to $path: $!");
@@ -138,23 +148,32 @@ sub install {
         $logger->warn("Couldn't delete tar-installation file '$mod.tar': $!");
     }
 
-    my $file = "$path/cstrike/liblist.gam";
+    my $file = "liblist.gam";
 
     open ( my $filehandle, '<', $file );
     my @slurp = <$filehandle>;
     close $filehandle;
 
-    my @new_file = grep { $_ !~ m/.*gamedll_linux.*$/ } @slurp;
+    my @new_file = grep { $_ !~ m/.*gamedll_linux.*$/} @slurp;
 
-    open ( my $filehandle, '>', $file );
-    print $filehandle $_ foreach @new_file;
-    print $filehandle 'gamedll_linux "addons/metamod/dlls/metamod_i386.so"';
+    open( $filehandle, '>', $file );
+    print {$filehandle} $_ foreach @new_file;
+    print $filehandle 'gamedll_linux "addons/metamod/dlls/metamod_i386.so" ;MetaMoD added by catepod' . "\n";
     close $filehandle;
-    $logger->info("Installation did complete sucessfull");
+    $logger->info("Installation of " . __PACKAGE__ . " did complete successful");
 
 }
 
 sub remove {
+
+    #
+    # Workflow:
+    #  -Check whether the mod has been installed
+    #  -Edit the metamodfile
+    #  -remove sourcefiles from disc
+    #  -inform the logger if errors
+    #
+
     my $heap = $_[HEAP];
     my $path = $heap->{path};
     my $mod  = $heap->{mod};
@@ -174,12 +193,26 @@ sub remove {
         return;
     }
 
-    if ( !rmtree("$path/cstrike/addons/metamod") ) {
-        $logger->warn("Couldn't delete tree '$path/cstrike/addons/metamod': $!");
+    my $file = "cstrike/liblist.gam";
+
+    open ( my $filehandle, '<', $file );
+    my @slurp = <$filehandle>;
+    close $filehandle;
+
+    my @new_file = grep { $_ !~ m/.*gamedll_linux.*$/} @slurp;
+    
+    open( $filehandle, '>', $file );
+    print {$filehandle} $_ foreach @new_file;
+    close $filehandle;
+
+    my $tree = "$path/cstrike/addons/metamod/";
+   
+    if ( !rmtree($tree) ) {
+        $logger->warn("Couldn't delete tree $tree: $!");
         return;
     }
 
-    $logger->info("Deinstallation did complete sucessfull.");
+    $logger->info("Deinstallation of " . __PACKAGE__ . " did complete successful.");
 
 }
 

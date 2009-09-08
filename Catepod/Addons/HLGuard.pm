@@ -8,11 +8,6 @@ use File::Copy;
 use File::Path;
 use Archive::Tar;
 
-# Installation
-#  -Installation
-#  linux addons/hlguard/dlls/hlguard_mm_i586.so
-
-
 my $logger = $main::logger;
 
 sub create {
@@ -122,13 +117,18 @@ sub install {
     my $PACKAGE_DIR = $heap->{package_dir};
     my $mod         = $heap->{mod};
 
-    if ( !-e "$path/cstrike/addons/metamod/" ) {
-        $logger->warn("Required plugin MetaMod has not been installed, yet");
-        return;    
+    if ( !-e "$path/cstrike/addons/metamod" ) {
+        $logger->warn("It seems, that required package MetaMod has not been installed, install it first.");
+        return;
+    }
+
+    if ( -e "$path/cstrike/addons/hlguard/" ) {
+        $logger->warn("It seems, that " . __PACKAGE__ . " has already been installed.");
+        return;
     }
 
     if ( !chdir($path) ) {
-        $logger->warn("Couldn't chdir to $path: $!");
+        $logger->warn("Couldn't dchdir to $path: $!");
         return;
     }
 
@@ -151,19 +151,13 @@ sub install {
         $logger->warn("Couldn't delete tar-installation file '$mod.tar': $!");
     }
 
-    my $filename = "$path/cstrike/addons/metamod/plugins.ini";
+    my $file = "addons/metamod/plugins.ini";
 
-    my $filehandle;
-    unless ( open ( $filehandle, '>>', $filename ) ) {
-        $logger->warn("Couldn't open $filename for writing: $!");
-        return;
-    }
+    open( my $filehandle, '>', $file );
+    print $filehandle 'linux "addons/hlguard/dlls/hlguard_mm_nightly.so" ;HLGuard added by catepod' . "\n";
+    close $filehandle;
 
-        print $filehandle "linux addons/hlguard/dlls/hlguard_mm_i686.so ;HLGuard ;added by catepod" . "\n";
-        close $filehandle;
-    
-
-    $logger->info("Installation did complete sucessfull");
+    $logger->info("Installation of " . __PACKAGE__ . " did complete successful");
 
 }
 
@@ -191,14 +185,14 @@ sub remove {
         return;
     }
 
-    if ( !-e "cstrike/addons/hlguard/" ) {
+    if ( !-e "cstrike/addons/hlguard" ) {
         $logger->warn( __PACKAGE__ . " have not been installed, yet " );
         return;
     }
 
-    my $file = "$path/cstrike/addons/metamod/plugins.ini";
-    open( my $filehandle, '<', $file ) or $logger->info("Could not open $file: $!");
+    my $file = "cstrike/addons/metamod/plugins.ini";
 
+    open ( my $filehandle, '<', $file );
     my @slurp = <$filehandle>;
     close $filehandle;
 
@@ -209,12 +203,13 @@ sub remove {
     close $filehandle;
 
     my $tree = "$path/cstrike/addons/hlguard/";
+   
     if ( !rmtree($tree) ) {
         $logger->warn("Couldn't delete tree $tree: $!");
         return;
     }
 
-    $logger->info("Deinstallation completed sucessfull.");
+    $logger->info("Deinstallation of " . __PACKAGE__ . " did complete successful.");
 
 }
 

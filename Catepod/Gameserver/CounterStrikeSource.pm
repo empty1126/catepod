@@ -198,7 +198,7 @@ sub stop_gameserver {
 
         if ($!) { $logger->warn("There some error's while killing Gameserver in '$path': $!"); }
         else {
-            $logger->info("Gameserver has stopped successfull.");
+            $logger->info("Gameserver has stopped successful.");
         }
 
     }
@@ -265,7 +265,7 @@ sub install {
         return;
     }
 
-    if ( copy( $file, "." ) eq 0 ) {
+    if ( !copy( $file, "." ) ) {
         $logger->warn("Error while copying '$file' to '$path': $!");
         return;
     }
@@ -281,7 +281,7 @@ sub install {
         $logger->warn("Error while deleting installation file: $!");
     }
 
-    $logger->info("Installation finished successfull");
+    $logger->info("Installation finished successful");
     POE::Kernel->alias_set($path);
     POE::Kernel->yield('_start_gameserver');
 }
@@ -290,8 +290,7 @@ sub remove {
 
     #workflow of this sub:
     #yield the signal to stop gameserver, after that
-    #we can savely remove the gameserver, after that
-    #informate a log-info-message
+    #we can savely remove the gameserver
 
     my $heap = $_[HEAP];
     my $path = $heap->{path};
@@ -328,7 +327,7 @@ sub remove {
         return;
     }
 
-    $logger->info("Deinstallation finished succesfull in $path.");
+    $logger->info("Deinstallation finished succesful in $path.");
 }
 
 sub shutdown {

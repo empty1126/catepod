@@ -282,6 +282,35 @@ sub process_command {
         }
 
     }
+    elsif ( $data->{command} == "install_map" ) {
+        my $mapname   = $data->{mapname};
+        my $port      = $data->{port};
+        my $path      = "$GSWI_DIR/gameserver/$port";
+        my $FD_SERVER = $data->{fastdownloadserver};
+        my $FD_LINK   = $data->{fastdownloadlink};
+        my $DL_LINK   = "$FD_SERVER/$FD_LINK";
+
+        if ( !-e "$path" ) {
+            $logger->warn("It seems, that in $path isn't installed a gameserver, aborting.");
+            return;
+        }
+
+        if ( $mapname !~ m/.*bsp/ ) {
+            if ( !chdir($path) ) {
+                $logger->warn("Couldn't chdir to $path: $!");
+                return;
+            }
+
+            system(" wget $DL_LINK ");
+
+            $logger->warn("Installed $mapname successful to server in $path.");
+        }
+        else {
+            $logger->warn("$mapname isn't a regular mapfile name or format, aborting.");
+            return;
+        }
+
+    }
     else {
         $logger->warn( "invalid json sent: couldn't understand command '" . $data->{command} . "'" );
     }

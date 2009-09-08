@@ -198,7 +198,7 @@ sub stop_gameserver {
 
         if ($!) { $logger->warn("There some error's while killing Gameserver in '$path': $!"); }
         else {
-            $logger->info("Gameserver has stopped successfull.");
+            $logger->info("Gameserver has stopped successful.");
         }
 
     }
@@ -239,7 +239,7 @@ sub restart {
     POE::Kernel->yield('_stop_gameserver');
     POE::Kernel->yield('_start_gameserver');
 
-    $logger->info("Gameserver in $path did restart succesfull.");
+    $logger->info("Gameserver in $path did restart succesful.");
 }
 
 sub install {
@@ -260,23 +260,23 @@ sub install {
 
     my $file = $PACKAGE_DIR . "/Gameserver/counter-strike.tar";
 
-    if ( mkdir($path) eq 0 ) {
+    if ( !mkdir($path) ) {
         $logger->warn("Error while creating directory '$path': $!");
         return;
     }
 
-    if ( chdir($path) eq 0 ) {
+    if ( !chdir($path) ) {
         $logger->warn("Error while chainging directory to '$path'");
         return;
     }
 
-    if ( copy( $file, "." ) eq 0 ) {
+    if ( !copy( $file, "." ) ) {
         $logger->warn("Error while copying '$file' to '$path': $!");
         return;
     }
 
     my $tar = Archive::Tar->new;
-    if ( $tar->read( $path . "counter-strike.tar", 1 ) eq "false" ) {
+    if ( !$tar->read( $path . "counter-strike.tar", 1 ) ) {
         $logger->warn("Error while reading tar archive: $path/counter-strike-source.tar: $!");
         return;
     }
@@ -286,7 +286,7 @@ sub install {
         $logger->warn("Error while deleting installation file: $!");
     }
 
-    $logger->info("Installation finished successfull");
+    $logger->info("Installation finished successful");
     POE::Kernel->alias_set($path);
     POE::Kernel->yield('_start_gameserver');
 }
