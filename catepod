@@ -23,8 +23,6 @@ use Privileges::Drop;
 use JSON;
 use Fcntl qw/:flock/;
 
-sub DEBUG() { 0 }
-
 my $configfile = shift @ARGV;
 my $conf;
 
@@ -64,8 +62,18 @@ die "Must run as root" unless $> == 0;
 # Daemonizing
 Proc::Daemon::Init() if $DAEMONIZE;
 
+#close STDOUT;
+#open STDOUT, '>', '/tmp/catepod-debugoutput' or die "argh! $!\n";
+
 # Open log
 our $logger = Catepod::Logger->new($NAME);
+
+sub DEBUG() {
+    eval {
+        my $fun = ( caller 2 )[3];
+        $logger->info("DEBUG: $fun");
+    };
+}
 
 open my $lockfile, '>', $PIDFILE
   or $logger->error("Couldn't open $PIDFILE for writing: $!");
@@ -100,12 +108,14 @@ POE::Session->create(
 POE::Kernel->run();
 
 sub add_gameserver {
+    DEBUG;
     my $port = $_[ARG0];
     my $pid  = $_[ARG1];
     $_[HEAP]->{gameserver}->{$port} = $pid;
 }
 
 sub delete_gameserver {
+    DEBUG;
     my $port = $_[ARG0];
     delete $_[HEAP]->{gameserver}->{$port};
 }
@@ -229,6 +239,10 @@ sub process_command {
     }
     elsif ( $data->{command} eq "stop" ) {
         my $path = $data->{path};
+        if ( $data->{remove} eq "true" ) {
+            $_[KERNEL]->post( $path => '_remove' );
+        }
+
         $logger->info( "Attempting to stop Gameserver in: " . $path );
         $_[KERNEL]->post( $path => '_shutdown' );
     }
@@ -246,6 +260,7 @@ sub process_command {
             return;
         }
     }
+
     elsif ( $data->{command} eq "install_mod" ) {
         my $path        = $data->{path};
         my $mod         = $data->{mod};
@@ -282,7 +297,7 @@ sub process_command {
         }
 
     }
-    elsif ( $data->{command} == "install_map" ) {
+    elsif ( $data->{command} eq "install_map" ) {
         my $mapname   = $data->{mapname};
         my $port      = $data->{port};
         my $path      = "$GSWI_DIR/gameserver/$port";

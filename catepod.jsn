@@ -1,5 +1,5 @@
 {
-"daemonize":true,
+"daemonize":false,
 "logname":"catepod",
 "runas_user":"gameserver",
 "pidfile":"/var/lock/catepod.pid",
@@ -10,10 +10,10 @@
         //Game                      //PoCo
         //-----------------------------------------------------
 
-        "counter-strike-source"     :"Catepod::Gameserver::CounterStrikeSource",
-        "counter-strike"            :"Catepod::Gameserver::CounterStrike",
-	    "day-of-defeat"             :"Catepod::Gameserver::DayOfDefeat",
-	    "day-of-defeat-source"      :"Catepod::Gameserver::DayOfDefeatSource"
+        "counter-strike"            :"Catepod::Gameserver::CounterStrike",          //works
+        "counter-strike-source"     :"Catepod::Gameserver::CounterStrikeSource",    //in progress
+	    "day-of-defeat"             :"Catepod::Gameserver::DayOfDefeat",            //later
+	    "day-of-defeat-source"      :"Catepod::Gameserver::DayOfDefeatSource"       //later
     },
 "packagedir":"/home/Catepod/",
 "mods":
@@ -22,28 +22,27 @@
         //-----------------------------------------------------
 
         //Counterstrike 1.6       
-        "metamod"                   :"Catepod::Addons::MetaMod",
-        "amxmodx"                   :"Catepod::Addons::AmXMoDX",
-        "hlguard"                   :"Catepod::Addons::HLGuard",
-        "statsme"                   :"Catepod::Addons::StatsMe",
-        "zomebiehorde"              :"Catepod::Addons::ZomebieHorde",
+        "metamod"                   :"Catepod::Addons::MetaMod",                    //installed and works
+        "amxmodx"                   :"Catepod::Addons::AmXMoDX",                    //installed and works
+        "hlguard"                   :"Catepod::Addons::HLGuard",                    //installed and works
+        "statsme"                   :"Catepod::Addons::StatsMe",                    //try'd to install, will not work - fix it later
         //Day of defeat
 
         //Counterstrike Source
-        "metamod-source"            :"Catepod::Addons::MetaModSource",
-        "eventscripts"              :"Catepod::Addons::EventScripts",
-        "gungame-source"            :"Catepod::Addons::GunGameSource",
-        "maniadmin-source"          :"Catepod::Addons::ManiAdminSource",
-        "noblock"                   :"Catepod::Addons::NoBlock",
-        "zblock"                    :"Catepod::Addons::zBlock",
-        "dos-attack-fix"            :"Catepod::Addons::DosAttackFix",
-        "rpg-source"                :"Catepod::Addons::RPGSource",
-        "sbdetox"                   :"Catepod::Addons::SBDetox",
-        "sourcemode"                :"Catepod::Addons::SourceMode",
+        "metamod-source"            :"Catepod::Addons::MetaModSource",              //deinstall works, just need to fix the install later
+        "eventscripts"              :"Catepod::Addons::EventScripts",               //in progress
+        "gungame-source"            :"Catepod::Addons::GunGameSource",              //later
+        "maniadmin-source"          :"Catepod::Addons::ManiAdminSource",            //later
+        "noblock"                   :"Catepod::Addons::NoBlock",                    //later
+        "zblock"                    :"Catepod::Addons::zBlock",                     //later
+        "dos-attack-fix"            :"Catepod::Addons::DosAttackFix",               //later
+        "rpg-source"                :"Catepod::Addons::RPGSource",                  //later
+        "sbdetox"                   :"Catepod::Addons::SBDetox",                    //later
+        "sourcemode"                :"Catepod::Addons::SourceMode",                 //later 
 
         //Day of defeat Source
-        "gungame-dods"              :"Catepod::Addons::GunGameDoDS",
-        "maniadmin-dods"            :"Catepod::Addons::ManiAdminDoDS"
+        "gungame-dods"              :"Catepod::Addons::GunGameDoDS",                //comming later
+        "maniadmin-dods"            :"Catepod::Addons::ManiAdminDoDS"               //comming later
 
     }
 }

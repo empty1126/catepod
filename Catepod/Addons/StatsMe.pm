@@ -1,4 +1,4 @@
-package Catepod::Addons::HLGuard;
+package Catepod::Addons::StatsMe;
 
 use strict;
 use warnings;
@@ -122,7 +122,7 @@ sub install {
         return;
     }
 
-    if ( -e "$path/cstrike/addons/hlguard/" ) {
+    if ( -e "$path/cstrike/addons/statsme" ) {
         $logger->warn("It seems, that " . __PACKAGE__ . " has already been installed.");
         return;
     }
@@ -154,7 +154,7 @@ sub install {
     my $file = "addons/metamod/plugins.ini";
 
     open( my $filehandle, '>>', $file );
-    print $filehandle 'linux addons/hlguard/dlls/hlguard_mm_nightly.so ;HLGuard added by catepod' . "\n";
+    print $filehandle 'linux addons/statsme/dlls/statsme_mm_i386.so ;StatsMe added by catepod' . "\n";
     close $filehandle;
 
     $logger->info("Installation of " . __PACKAGE__ . " did complete successful");
@@ -185,7 +185,7 @@ sub remove {
         return;
     }
 
-    if ( !-e "cstrike/addons/hlguard" ) {
+    if ( !-e "cstrike/addons/statsme" ) {
         $logger->warn( __PACKAGE__ . " have not been installed, yet " );
         return;
     }
@@ -196,13 +196,13 @@ sub remove {
     my @slurp = <$filehandle>;
     close $filehandle;
 
-    my @new_file = grep { $_ !~ m/.*HLGuard.*$/} @slurp;
+    my @new_file = grep { $_ !~ m/.*StatsMe.*$/} @slurp;
     
     open( $filehandle, '>', $file );
     print {$filehandle} $_ foreach @new_file;
     close $filehandle;
 
-    my $tree = "$path/cstrike/addons/hlguard/";
+    my $tree = "$path/cstrike/addons/statsme/";
    
     if ( !rmtree($tree) ) {
         $logger->warn("Couldn't delete tree $tree: $!");

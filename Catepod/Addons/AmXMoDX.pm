@@ -122,7 +122,7 @@ sub install {
         return;
     }
 
-    if ( -e "$path/cstrike/addons/amx" ) {
+    if ( -e "$path/cstrike/addons/amxmodx" ) {
         $logger->warn("It seems, that " . __PACKAGE__ . " has already been installed.");
         return;
     }
@@ -153,8 +153,8 @@ sub install {
 
     my $file = "addons/metamod/plugins.ini";
 
-    open( my $filehandle, '>', $file );
-    print $filehandle 'linux "addons/amxmodx/dllss/amx_mm_i586.so" ;AmXMoDX added by catepod' . "\n";
+    open( my $filehandle, '>>', $file );
+    print $filehandle 'linux addons/amxmodx/dlls/amxmodx_mm_i386.so ;AmXMoDX added by catepod' . "\n";
     close $filehandle;
 
     $logger->info("Installation of " . __PACKAGE__ . " did complete successful");
@@ -185,7 +185,7 @@ sub remove {
         return;
     }
 
-    if ( !-e "cstrike/addons/amx" ) {
+    if ( !-e "cstrike/addons/amxmodx" ) {
         $logger->warn( __PACKAGE__ . " have not been installed, yet " );
         return;
     }
@@ -202,7 +202,7 @@ sub remove {
     print {$filehandle} $_ foreach @new_file;
     close $filehandle;
 
-    my $tree = "$path/cstrike/addons/amx/";
+    my $tree = "$path/cstrike/addons/amxmodx/";
    
     if ( !rmtree($tree) ) {
         $logger->warn("Couldn't delete tree $tree: $!");

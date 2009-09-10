@@ -1,4 +1,4 @@
-package Catepod::Addons::HLGuard;
+package Catepod::Addons::MetaModSource;
 
 use strict;
 use warnings;
@@ -117,18 +117,15 @@ sub install {
     my $PACKAGE_DIR = $heap->{package_dir};
     my $mod         = $heap->{mod};
 
-    if ( !-e "$path/cstrike/addons/metamod" ) {
-        $logger->warn("It seems, that required package MetaMod has not been installed, install it first.");
-        return;
-    }
-
-    if ( -e "$path/cstrike/addons/hlguard/" ) {
+    #mal noch checken, ob der mod bereits installiert wurde
+    
+    if ( -e "$path/cstrike/addons/metamod" ) {
         $logger->warn("It seems, that " . __PACKAGE__ . " has already been installed.");
         return;
     }
 
     if ( !chdir($path) ) {
-        $logger->warn("Couldn't dchdir to $path: $!");
+        $logger->warn("Couldn't chdir to $path: $!");
         return;
     }
 
@@ -151,10 +148,17 @@ sub install {
         $logger->warn("Couldn't delete tar-installation file '$mod.tar': $!");
     }
 
-    my $file = "addons/metamod/plugins.ini";
+    my $file = "gameinfo.txt";
 
-    open( my $filehandle, '>>', $file );
-    print $filehandle 'linux addons/hlguard/dlls/hlguard_mm_nightly.so ;HLGuard added by catepod' . "\n";
+    open ( my $filehandle, '<', $file );
+    my @slurp = <$filehandle>;
+    close $filehandle;
+  
+    my ( $fir, $snd ) = split( "Game                            |gameinfo_path|.", @slurp );
+    my @new_file = $fir . "\n" . "Game                            |gameinfo_path|." . "\n" . "GameBin     |gameinfo_path|addons/metamod/bin " . "\n" . $snd;
+
+    open ( my $filehandle, '>', $file );
+    print $filehandle @new_file;
     close $filehandle;
 
     $logger->info("Installation of " . __PACKAGE__ . " did complete successful");
@@ -185,24 +189,24 @@ sub remove {
         return;
     }
 
-    if ( !-e "cstrike/addons/hlguard" ) {
+    if ( !-e "cstrike/addons/metamod/" ) {
         $logger->warn( __PACKAGE__ . " have not been installed, yet " );
         return;
     }
 
-    my $file = "cstrike/addons/metamod/plugins.ini";
+    my $file = "cstrike/liblist.gam";
 
     open ( my $filehandle, '<', $file );
     my @slurp = <$filehandle>;
     close $filehandle;
 
-    my @new_file = grep { $_ !~ m/.*HLGuard.*$/} @slurp;
+    my @new_file = grep { $_ !~ m/.*gamedll_linux.*$/} @slurp;
     
     open( $filehandle, '>', $file );
     print {$filehandle} $_ foreach @new_file;
     close $filehandle;
 
-    my $tree = "$path/cstrike/addons/hlguard/";
+    my $tree = "$path/cstrike/addons/metamod/";
    
     if ( !rmtree($tree) ) {
         $logger->warn("Couldn't delete tree $tree: $!");
