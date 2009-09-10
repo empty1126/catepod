@@ -15,6 +15,6 @@ COMMANDS THAT CAN BE RECEIVED
     "params" is a string of options that will passed as-is to the gameserver.
 
  - STOP A GAME
-    {"command":"stop", "path":"/path/to/gameserver"}
+    {"command":"stop", "path":"/path/to/gameserver", "remove":bool}
     stops a game. "port" is the port of the server you want to stop. If "remove" is true, the gameserver
     will also get deleted.
