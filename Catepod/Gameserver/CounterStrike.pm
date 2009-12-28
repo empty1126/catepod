@@ -5,7 +5,7 @@ use warnings;
 use POE;
 use POE::Wheel::Run;
 use Carp;
-use File::Copy;
+use File::NCopy;
 use File::Path;
 use Archive::Tar;
 
@@ -86,8 +86,6 @@ sub create {
             _process_command  => \&process_command,    # the signal to use when you want to send a command to the server
             stop_gameserver   => \&stop_gameserver,    # the signal to use when you want this thing to get stopped
             start_gameserver  => \&start_gameserver,   # the signal to use when you want this thing to get started
-            sndstop           => \&sndstop,            # the signal to send the SIGKILL
-            restart           => \&restart,            # signal sent when the gameserver should be restarted
             
             #signals for the wheel
             got_child_stdout  => \&child_stdout,
@@ -183,30 +181,29 @@ sub stop_gameserver {
     my $path = $heap->{path};
     my $port = $heap->{port};
 
-    my $chkalias = 1;
-    if ( $chkalias == 0 ) {    #check whether the gameserver runs already ...
+    if ( !$_[HEAP]->{wheel} ) {
         $logger->warn("There does not run a gameserver in '$path' with port '$port'");
         return;
     }
-    elsif ( !-e "$path/hlds_run" ) {    #check whether the gameserver is installed
+    elsif ( !-e "$path/hlds_run" ) { 
         $logger->warn("There isn't installed, a gameserver in '$path'");
         return;
     }
     else {
-        $_[HEAP]->{wheel}->kill(9);
-        POE::Kernel->delay( sndstop => 4 );
-
-        if ($!) { $logger->warn("There some error's while killing Gameserver in '$path': $!"); }
-        else {
-            $logger->info("Gameserver has stopped successful.");
+        
+        if ( $_[HEAP]->{wheel}->put("quit") ) {
+            $logger->warn("Error while stopping gameserver: $!");
+            return;
         }
 
-    }
-}
+        if ( !$_[HEAP]->{wheel}->kill(9) ) {
+            $logger->warn("Error while killing the gameserver: $!");
+            return;
+        }
 
-sub sndstop {
-    $logger->info( "Attempting to kill Gameserver " . $_[HEAP]->{wheel}->PID() . " with SIGKILL" );
-    $_[HEAP]->{wheel}->kill(15);
+        $logger->info("Gameserver has stopped successful.");
+
+    }
 }
 
 sub stop {
@@ -258,32 +255,28 @@ sub install {
         return;
     }
 
-    my $file = $PACKAGE_DIR . "/Gameserver/counter-strike.tar";
+    my $folder = $PACKAGE_DIR . "/Gameserver/Counter-Strike/";
+
+    if ( !-e $folder ) {
+    	$logger->warn(" The source directory $folder doesn'e exists.");
+	return;    
+    }
 
     if ( !mkdir($path) ) {
-        $logger->warn("Error while creating directory '$path': $!");
+        $logger->warn(" Error while creating directory '$path': $!");
         return;
     }
 
-    if ( !chdir($path) ) {
-        $logger->warn("Error while chainging directory to '$path'");
+    if ( !chdir($folder) ) {
+        $logger->warn( " Error while chainging directory to '$folder'");
         return;
     }
 
-    if ( !copy( $file, "." ) ) {
-        $logger->warn("Error while copying '$file' to '$path': $!");
-        return;
-    }
+    my $file = File::NCopy->new(recursive => 1, preserve => 1);
 
-    my $tar = Archive::Tar->new;
-    if ( !$tar->read( $path . "counter-strike.tar", 1 ) ) {
-        $logger->warn("Error while reading tar archive: $path/counter-strike-source.tar: $!");
+    if ( !$file->copy(".", $path . "/" ) ) {
+        $logger->warn( " Error while copying '$folder' to '$path': $!");
         return;
-    }
-    $tar->extract();
-
-    if ( !unlink( $path . "/counter-strike.tar" ) ) {
-        $logger->warn("Error while deleting installation file: $!");
     }
 
     $logger->info("Installation finished successful");

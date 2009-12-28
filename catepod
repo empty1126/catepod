@@ -83,7 +83,7 @@ flock( $lockfile, LOCK_EX | LOCK_NB )
 print {$lockfile} $$ . "\n"
   or $logger->error("Couldn't write PID ($$) to $PIDFILE: $!");
 
-#dropping the privileges
+# dropping the privileges
 drop_privileges($RUNAS_USER);
 
 POE::Session->create(

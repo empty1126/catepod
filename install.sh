@@ -14,5 +14,5 @@ cp catepod.jsn /etc/ -vv
 echo ">>> done, starting daemon"
 screen -d -m -S catepod ./catepod /etc/catepod.jsn
 echo ">>> done."
-killall srcds_run
-killall srcds_amd
+killall hlds_run
+killall hlds_amd
