@@ -211,10 +211,13 @@ sub process_command {
             $logger->warn("cannot start gameserver '$port'  without params.");
             return;
         }
-        $logger->info( "Starting $poco with params: '"
-              . $params_ref
-              . "' in: '$gsdir'"
-              . ( $install ? ", while installing it" : "" ) );
+
+        my $ins;
+        if    ( $install eq "install" )   { $ins = ", while install it"; }
+        elsif ( $install eq "remove" )    { $ins = ", while removing it"; }
+        elsif ( $install eq "reinstall" ) { $ins = ", while reinstalling it"; }
+
+        $logger->info( "Starting $poco with params: '" . "@$params_ref" . "' in: '$gsdir'" . $ins );
 
         # starting the gameserver
         my $require_name = $poco;
@@ -239,8 +242,9 @@ sub process_command {
     }
     elsif ( $data->{command} eq "stop" ) {
         my $path = $data->{path};
-        if ( $data->{remove} eq "true" ) {
-            $_[KERNEL]->post( $path => '_remove' );
+        if ( $data->{install} eq "remove" ) {
+            $_[KERNEL]->post( $path => 'remove' );
+            return;
         }
 
         $logger->info( "Attempting to stop Gameserver in: " . $path );
@@ -286,7 +290,6 @@ sub process_command {
         my $require_name = $poco;
         $require_name =~ s/::/\//g;
         $require_name .= '.pm';
-        $logger->info("$path, $install, $mod, $PACKAGE_DIR");
         eval { require $require_name; };
         if ($@) { $logger->info("Error while compilling $poco: $@"); return; }
         eval { $poco->create( path => $path, install => $install, mod => $mod, package_dir => $PACKAGE_DIR ); };

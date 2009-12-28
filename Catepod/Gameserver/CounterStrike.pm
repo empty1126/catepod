@@ -79,7 +79,9 @@ sub create {
             _start            => \&start,              # received when the session starts
             _stop             => \&stop,               # received when the session is GC'ed
             _install          => \&install,            # internal signal to set the gameserver up the first time
-            _remove           => \&remove,             # internal signal to remove the gameserver from disc
+            _remove           => \&_remove,            # internal signal to remove the gameserver from disc
+            remove            => \&remove,             # internal signal to check somethings before removing the server 
+            _reinstall        => \&reinstall,          # internal signal to reinstall the gameserver
             _stop_gameserver  => \&stop_gameserver,    # internal signal to stop the gameserver
             _start_gameserver => \&start_gameserver,   # internal signal to start the gameserver
             _shutdown         => \&shutdown,           # the signal to use when you want this thing to shut down
@@ -110,29 +112,23 @@ sub start {
     my $path    = $heap->{path};
     my $params  = $heap->{params};
 
-    if ( -e "$path/hlds_run" && $install != "remove" ) {
+    if ( -e "$path/hlds_run" && ( $install != "remove" || $install != "reinstall" ) ) {
         $logger->warn("You told me to install a gameserver, but it seems there is already one installed!");
         return;
     }
-    elsif ( ( !-e "$path/hlds_run" ) && !$install ) {
+    elsif ( !-e "$path/hlds_run" && $install != "install" ) {
         $logger->warn("There is no gameserver in $path, and you told me not to install one, aborting.");
         return;
     }
 
-    if ( $install eq "remove" ) {
-        $logger->info("Starting deinstallation of Gameserverin '$path'");
-        POE::Kernel->yield('_remove');
-    }
-    elsif ($install eq "install" ) {
+    if ($install eq "install" ) {
         $logger->info("Starting installation of Gameserver in '$path'");
         POE::Kernel->yield('_install');
     }
     elsif ( $install eq "reinstall" ) {
-        $logger->info("Starting reinstallation of Gameserver in '$path'");
-        POE::Kernel->yield('_remove');
-        POE::Kernel->yield('_install');
+        POE::Kernel->yield('_reinstall');        
     }
-    else {
+    else { 
         POE::Kernel->alias_set($path);
         POE::Kernel->yield('_start_gameserver');
     }
@@ -176,6 +172,26 @@ sub child_close {
     delete $_[HEAP]->{wheel};
 }
 
+sub reinstall {
+    my $heap = $_[HEAP];
+    my $path = $heap->{path};
+    my $port = $heap->{port};
+
+    if ( !-e $path . "/hlds_run" ) {
+        $logger->info("There isn't installed a gameserver in $path, we are going to install it now");
+    }
+    else {
+
+        POE::Kernel->yield('_stop_gameserver');
+        $logger->info("Deinstallation of gameserver in $path finished successful.");
+
+    }
+
+    $logger->info("Beginn with installtion of gameserver in $path.");
+    POE::Kernel->delay("_install" => 3);
+
+}
+
 sub stop_gameserver {
     my $heap = $_[HEAP];
     my $path = $heap->{path};
@@ -183,11 +199,9 @@ sub stop_gameserver {
 
     if ( !$_[HEAP]->{wheel} ) {
         $logger->warn("There does not run a gameserver in '$path' with port '$port'");
-        return;
     }
     elsif ( !-e "$path/hlds_run" ) { 
         $logger->warn("There isn't installed, a gameserver in '$path'");
-        return;
     }
     else {
         
@@ -205,6 +219,7 @@ sub stop_gameserver {
 
     }
 }
+
 
 sub stop {
 
@@ -250,7 +265,7 @@ sub install {
         return;
     }
 
-    if ( -e "$path/hlds_run" ) {
+    if ( -e "$path/hlds_run"  ) {
         $logger->warn("It seems, that there is already installed a gameserver in $path");
         return;
     }
@@ -285,6 +300,25 @@ sub install {
 }
 
 sub remove {
+    my $heap = $_[HEAP];
+    my $path = $heap->{path};
+    my $user = $heap->{user};
+    my $port = $heap->{port};
+
+    if ( !-e $path . "/hlds_run" ) { 
+        $logger->warn("There isn't installed a gameserver in $path, jump over to installation");   
+    }
+    else {
+
+        if ( $_[HEAP]{wheel} ) {
+            POE::Kernel->yield('_stop_gameserver');
+        }
+
+        POE::Kernel->yield('_remove');
+    }
+}
+
+sub _remove {
 
     #workflow of this sub:
     #yield the signal to stop gameserver, after that
@@ -302,22 +336,6 @@ sub remove {
 
     unless ($path) {
         $logger->warn("We can not remove a gameserver without the server part. Exiting.");
-        return;
-    }
-
-    my $chkalias = 0;    #1=the server runs, 0=the server do not run
-    if ( $chkalias == 1 ) {
-        $logger->info("Stopping Gameserver in $path, with port '$port'");
-        POE::Kernel->yield('_stop_gameserver');
-
-        if ($!) {
-            $logger->warn("Error while stopping gameserver in $path: $!");
-            return;
-        }
-    }
-
-    if ( !chdir($path) ) {
-        $logger->warn("Couldnt chdir to $path: $!");
         return;
     }
 
