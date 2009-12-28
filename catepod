@@ -217,7 +217,7 @@ sub process_command {
         elsif ( $install eq "remove" )    { $ins = ", while removing it"; }
         elsif ( $install eq "reinstall" ) { $ins = ", while reinstalling it"; }
 
-        $logger->info( "Starting $poco with params: '" . "@$params_ref" . "' in: '$gsdir'" . $ins );
+        $logger->info( "Starting $poco with params: '" . "@$params_ref" . "' in: '$gsdir'" . $ins . "." );
 
         # starting the gameserver
         my $require_name = $poco;
@@ -255,7 +255,7 @@ sub process_command {
         my $port = $data->{port};
         $logger->info( "Attempting to restart Gameserver in: " . $path );
         if ( !$_[KERNEL]->post( $path => 'stop' ) ) {
-            $logger->warn("Couldn't stop Server in $path, may there does not run a server ?: $!");
+            $logger->warn("Couldn't stop Server in $path, maybe there does not run a server ?: $!");
             return;
         }
 
@@ -264,7 +264,17 @@ sub process_command {
             return;
         }
     }
+    elsif ( $data->{command} eq "reinstall" ) {
+        my $path = $data->{path};
 
+        $logger->info("Start reinstallation of Gameserver in $path.");
+
+        if ( !$_[KERNEL]->post( $path => '_reinstall' ) ) {
+            $logger->warn("Coudln't send reinstall signal to gameserver in $path, maybe there doesn't run one ?: $!");
+            return;
+        }
+
+    }
     elsif ( $data->{command} eq "install_mod" ) {
         my $path        = $data->{path};
         my $mod         = $data->{mod};

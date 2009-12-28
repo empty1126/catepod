@@ -182,13 +182,33 @@ sub reinstall {
     }
     else {
 
-        POE::Kernel->yield('_stop_gameserver');
+            
+        if ( $_[HEAP]{wheel} ) {
+
+            if ( $_[HEAP]->{wheel}->put("quit") ) {
+                $logger->warn("Error while stopping gameserver: $!");
+                return;
+            }
+
+            if ( !$_[HEAP]->{wheel}->kill(9) ) {
+                $logger->warn("Error while killing the gameserver: $!");
+                return;
+            }
+
+            if ( !rmtree($path) ) {
+                $logger->warn("Couldn't delete gameserver in $path");
+                return;            
+            }
+
+        }
+
+        
         $logger->info("Deinstallation of gameserver in $path finished successful.");
 
     }
 
     $logger->info("Beginn with installtion of gameserver in $path.");
-    POE::Kernel->delay("_install" => 3);
+    POE::Kernel->delay("_install" => 5 );
 
 }
 
