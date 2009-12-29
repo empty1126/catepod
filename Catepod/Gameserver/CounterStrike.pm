@@ -255,9 +255,14 @@ sub process_command {
     # Workflow
     # send the commands from $_[ARG0] to the server
 
-    my $command = $_[ARG0];
+    my $command = $_[ARG1];
 
-    $logger->info("Did receive command: '$command'.");
+    if ( $_[HEAP]{wheel}->put($command) ) {
+        $logger->warn("Error while putting $command in wheel: $!");
+        return;
+    }
+
+    $logger->warn("Put command sucessfull into wheel !");
 
 }
 

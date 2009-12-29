@@ -346,11 +346,10 @@ sub process_command {
 
     }
     elsif ( $data->{command} eq "process_command" ) {
-        my $heap = $_[HEAP];
-        my $cmd  = $heap->{cmd};
-        my $path = $heap->{path};
+        my $cmd  = $data->{cmd};
+        my $path = $data->{path};
 
-        if ( !$_[KERNEL]->post( $path => 'process_command', "command" => $cmd ) ) {
+        if ( !$_[KERNEL]->post( $path => '_process_command', "command" => $cmd ) ) {
             $logger->warn("Error while processing command $cmd to $path");
             return;
         }
