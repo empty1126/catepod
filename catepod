@@ -214,7 +214,6 @@ sub process_command {
 
         my $ins;
         if    ( $install eq "install" )   { $ins = ", while install it"; }
-        elsif ( $install eq "remove" )    { $ins = ", while removing it"; }
         elsif ( $install eq "reinstall" ) { $ins = ", while reinstalling it"; }
 
         $logger->info( "Starting $poco with params: '" . "@$params_ref" . "' in: '$gsdir'" . $ins . "." );
@@ -242,18 +241,25 @@ sub process_command {
     }
     elsif ( $data->{command} eq "stop" ) {
         my $path = $data->{path};
+
         if ( $data->{install} eq "remove" ) {
-            $_[KERNEL]->post( $path => 'remove' );
-            return;
+            if ( !$_[KERNEL]->post( $path => 'remove' ) ) {
+                $logger->warn("Error while post remove in $path: $!");
+                return;
+            }
         }
 
         $logger->info( "Attempting to stop Gameserver in: " . $path );
-        $_[KERNEL]->post( $path => '_shutdown' );
+        if ( !$_[KERNEL]->post( $path => '_stop_gameserver' ) ) {
+            $logger->warn("Error while posting '_stop_gameserver' to $path: $!");
+            return;
+        }
     }
     elsif ( $data->{command} eq "restart" ) {
         my $path = $data->{path};
         my $port = $data->{port};
         $logger->info( "Attempting to restart Gameserver in: " . $path );
+
         if ( !$_[KERNEL]->post( $path => 'stop' ) ) {
             $logger->warn("Couldn't stop Server in $path, maybe there does not run a server ?: $!");
             return;
@@ -338,6 +344,16 @@ sub process_command {
             return;
         }
 
+    }
+    elsif ( $data->{command} eq "process_command" ) {
+        my $heap = $_[HEAP];
+        my $cmd  = $heap->{cmd};
+        my $path = $heap->{path};
+
+        if ( !$_[KERNEL]->post( $path => 'process_command', "command" => $cmd ) ) {
+            $logger->warn("Error while processing command $cmd to $path");
+            return;
+        }
     }
     else {
         $logger->warn( "invalid json sent: couldn't understand command '" . $data->{command} . "'" );

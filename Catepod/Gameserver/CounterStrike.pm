@@ -116,9 +116,12 @@ sub start {
         $logger->warn("You told me to install a gameserver, but it seems there is already one installed!");
         return;
     }
-    elsif ( !-e "$path/hlds_run" && $install != "install" ) {
-        $logger->warn("There is no gameserver in $path, and you told me not to install one, aborting.");
-        return;
+    
+    if ( !-e "$path/hlds_run" ) {
+        unless ( $install eq  "install" ) {
+            $logger->warn("There is no gameserver in $path, and you told me not to install one, aborting.");
+            return;
+        }
     }
 
     if ($install eq "install" ) {
