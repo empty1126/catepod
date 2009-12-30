@@ -112,15 +112,19 @@ sub start {
     my $path    = $heap->{path};
     my $params  = $heap->{params};
 
-    if ( -e "$path/hlds_run" && ( $install != "remove" || $install != "reinstall" ) ) {
-        $logger->warn("You told me to install a gameserver, but it seems there is already one installed!");
-        return;
+    if ( -e "$path/hlds_run"  ) {
+        if ( $install != "remove" && $install != "reinstall" )  {
+            $logger->warn("You told me to install a gameserver, but it seems there is already one installed!");
+            return;
+        }
     }
     
     if ( !-e "$path/hlds_run" ) {
         unless ( $install eq  "install" ) {
-            $logger->warn("There is no gameserver in $path, and you told me not to install one, aborting.");
-            return;
+            unless ( $install eq "reinstall" ) {
+                $logger->warn("There is no gameserver in $path, and you told me not to install one, aborting.");
+                return;
+            }
         }
     }
 
@@ -197,14 +201,14 @@ sub reinstall {
                 $logger->warn("Error while killing the gameserver: $!");
                 return;
             }
+        }
 
             if ( !rmtree($path) ) {
                 $logger->warn("Couldn't delete gameserver in $path");
                 return;            
             }
 
-        }
-
+        
         
         $logger->info("Deinstallation of gameserver in $path finished successful.");
 
