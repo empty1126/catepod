@@ -1,6 +1,7 @@
 #!/bin/bash
 echo ">>> stopping catepod"
-killall catepod &> /dev/null
+kill `ps ax |grep catepod |awk -F . '{print $1}'|awk '{print $1}'` &> 0
+#killall catepod &> /dev/null
 echo ">>> compilling catepod"
 perltidy -b -l 120 catepod && rm catepod.bak
 perl -c catepod || (echo "catepod didn't compile"; exit)
@@ -12,7 +13,7 @@ cp catepod /usr/bin/ -vv
 cp Catepod/ "/usr/lib/perl5/" -vvr
 cp catepod.jsn /etc/ -vv
 echo ">>> done, starting daemon"
-screen -d -m -S catepod ./catepod /etc/catepod.jsn
+perl catepod /etc/catepod.jsn
 echo ">>> done."
 killall hlds_run
-killall hlds_amd
+killall hlds_i686

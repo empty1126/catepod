@@ -10,6 +10,7 @@ use File::Path;
 use Archive::Tar;
 
 my $logger = $main::logger;
+my $gslogger = $main::gslogger;
 
 #
 # Workflow
@@ -223,6 +224,7 @@ sub stop_gameserver {
     my $heap = $_[HEAP];
     my $path = $heap->{path};
     my $port = $heap->{port};
+    my $gsID = $heap->{gsID};
 
     POE::Kernel->alias_remove ( $_[HEAP]->{path} );
 
@@ -244,7 +246,7 @@ sub stop_gameserver {
 
 
         $logger->info("Gameserver has stopped successful.");
-
+        $gslogger->warn("Gameserver has stopped successful.");
     }
 }
 

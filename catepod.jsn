@@ -1,9 +1,9 @@
 {
-"daemonize":false,
+"daemonize":true,
 "logname":"catepod",
 "runas_user":"gameserver",
 "pidfile":"/var/lock/catepod.pid",
-"pipe_dir":"/tmp/gswi/socket",
+"pipe_dir":"/var/www/virtualHosts/catepo.net/wi/socket",
 "gswi_dir":"/home/",
 "games":
     {
