@@ -224,10 +224,9 @@ sub stop_gameserver {
     my $path = $heap->{path};
     my $port = $heap->{port};
 
-    if ( !$_[HEAP]->{wheel} ) {
-        $logger->warn("There does not run a gameserver in '$path' with port '$port'");
-    }
-    elsif ( !-e "$path/hlds_run" ) { 
+    POE::Kernel->alias_remove ( $_[HEAP]->{path} );
+
+    if ( !-e "$path/hlds_run" ) { 
         $logger->warn("There isn't installed, a gameserver in '$path'");
     }
     else {
@@ -241,6 +240,8 @@ sub stop_gameserver {
             $logger->warn("Error while killing the gameserver: $!");
             return;
         }
+        
+
 
         $logger->info("Gameserver has stopped successful.");
 
