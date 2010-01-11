@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#/usr/bin/perl
 
 ###-------------------------------------------------------------------
 ### File    : catepod.pl
@@ -18,6 +18,7 @@ use POE::Wheel::FollowTail;
 use Proc::Daemon;
 
 use Catepod::Logger;
+use Catepod::GsLogger;
 
 use Privileges::Drop;
 use JSON;
@@ -62,16 +63,14 @@ die "Must run as root" unless $> == 0;
 # Daemonizing
 Proc::Daemon::Init() if $DAEMONIZE;
 
-#close STDOUT;
-#open STDOUT, '>', '/tmp/catepod-debugoutput' or die "argh! $!\n";
-
 # Open log
-our $logger = Catepod::Logger->new($NAME);
+our $logger   = Catepod::Logger->new($NAME);
+our $gslogger = Catepod::GsLogger->new($NAME);
 
 sub DEBUG() {
     eval {
-        my $fun = ( caller 2 )[3];
-        $logger->info("DEBUG: $fun");
+        my $debuggmsg = ( caller 2 )[3];
+        $logger->info("DEBUG: $debuggmsg");
     };
 }
 
@@ -84,7 +83,7 @@ print {$lockfile} $$ . "\n"
   or $logger->error("Couldn't write PID ($$) to $PIDFILE: $!");
 
 # dropping the privileges
-drop_privileges($RUNAS_USER);
+#drop_privileges($RUNAS_USER);
 
 POE::Session->create(
     inline_states => {
@@ -241,19 +240,30 @@ sub process_command {
     }
     elsif ( $data->{command} eq "stop" ) {
         my $path = $data->{path};
+        my $gsID = $data->{gsID};
 
         if ( $data->{install} eq "remove" ) {
             if ( !$_[KERNEL]->post( $path => 'remove' ) ) {
-                $logger->warn("Error while post remove in $path: $!");
-                return;
+                if ( $! eq "No such process" ) {
+                    $gslogger->warn( "The server doesn't run, but it have to be for removing, aborting deinstallation.",
+                        $gsID );
+                    $logger->info("The server have to been running before we can remove it.");
+                }
+                else {
+                    $logger->warn("Error while post remove in $path: $!");
+                    return;
+                }
             }
         }
 
         $logger->info( "Attempting to stop Gameserver in: " . $path );
+
+        if ($!) { $logger->info("$!"); }
         if ( !$_[KERNEL]->post( $path => '_stop_gameserver' ) ) {
             $logger->warn("Error while posting '_stop_gameserver' to $path: $!");
             return;
         }
+
     }
     elsif ( $data->{command} eq "restart" ) {
         my $path = $data->{path};
