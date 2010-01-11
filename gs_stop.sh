@@ -1,1 +1,1 @@
-echo '{"command":"stop", "path":"/home/gameserver/empty/27015/", "install":"false"}' > /tmp/gswi/socket
+echo '{"command":"stop", "path":"/home/gameserver/admin/25500/", "install":"false"}' > /var/www/virtualHosts/catepo.net/wi/socket
