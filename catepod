@@ -1,14 +1,6 @@
 #!/usr/bin/perl
 
-###-------------------------------------------------------------------
-### File    : catepod.pl
-### Author  : whoppix <jwrings@gmail.com>
-### Description : Simple daemon construct that does the usual daemon
-###         housekeeping, daemonizing, logging, privilege dropping,
-###         pid file management, etc...
-### License : GPLv2
-### Created : 01 Jun 2009 by  <whoppix@localhost.localdomain>
-###-------------------------------------------------------------------
+### insert header & licensing conditions here
 
 use strict;
 use warnings;

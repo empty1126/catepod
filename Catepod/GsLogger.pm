@@ -18,7 +18,7 @@ sub warn {
     my $gsID    = shift;
 
     my $dsn     = "DBI:mysql:database=gswi;host=localhost;port=3306";
-    my $dbh     = DBI->connect( $dsn, 'root', 'k23771' );
+    my $dbh     = DBI->connect( $dsn, 'xxxx', 'xxx' );
     
     my $crtime  = Time::HiRes::time;
         
