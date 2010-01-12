@@ -8,6 +8,7 @@ use Carp;
 use File::NCopy;
 use File::Path;
 use Archive::Tar;
+use Time::HiRes;
 
 my $logger = $main::logger;
 my $gslogger = $main::gslogger;
@@ -34,6 +35,7 @@ sub create {
     my $params;
     my $port;
     my $PACKAGE_DIR;
+    my $gsID;
 
     if ( exists $options{'params'} ) {
         $params = $options{'params'};
@@ -42,6 +44,16 @@ sub create {
     else {
         croak( __PACKAGE__ . '->new needs a \'params\' argument.' );
     }
+
+    if ( exists $options{'gsID'} ) {
+        $gsID   = $options{'gsID'};
+        delete $options{'gsID'};
+    }
+    else {
+        $logger->warn("You didnt give me the server ID, exiting...");
+        return;
+    }
+
     if ( exists $options{'install'} ) {
         $install = $options{'install'};
         delete $options{'install'};
@@ -102,6 +114,7 @@ sub create {
             params   => $params,
             packages => $PACKAGE_DIR,
             port     => $port,
+            gsID     => $gsID,
         }
     );
 
@@ -112,10 +125,13 @@ sub start {
     my $install = $heap->{install};
     my $path    = $heap->{path};
     my $params  = $heap->{params};
+    my $gsID    = $heap->{gsID};
 
     if ( -e "$path/hlds_run"  ) {
         if ( $install != "remove" && $install != "reinstall" )  {
             $logger->warn("You told me to install a gameserver, but it seems there is already one installed!");
+            $gslogger->warn("It seems that in $path is already installed a gameserver !", $gsID);
+            $gslogger->setstatus("installerr", $gsID);
             return;
         }
     }
@@ -124,6 +140,8 @@ sub start {
         unless ( $install eq  "install" ) {
             unless ( $install eq "reinstall" ) {
                 $logger->warn("There is no gameserver in $path, and you told me not to install one, aborting.");
+                $gslogger->warn("You told me not to install a gameserver, and there is no gameserver, please reinstall it.", $gsID);
+                $gslogger->setstatus("startfail", $gsID);
                 return;
             }
         }
@@ -137,6 +155,13 @@ sub start {
         POE::Kernel->yield('_reinstall');        
     }
     else { 
+        if ( defined $_[KERNEL]->alias_resolve($path) ) {
+            $logger->warn("Gameserver is already running, please stop it before starting it.");
+            $gslogger->warn("Gameserver runs already, please stop it before starting it.", $gsID);
+            $gslogger->setstatus("startfail", $gsID);
+            return;
+        }
+
         POE::Kernel->alias_set($path);
         POE::Kernel->yield('_start_gameserver');
     }
@@ -153,26 +178,52 @@ sub start_gameserver {
     my $install = $heap->{install};
     my $path    = $heap->{path};
     my $params  = $heap->{params};
+    my $gsID    = $heap->{gsID};
 
-    chdir($path);
+    if ( !chdir($path) ) {
+        $logger->warn("Couldn't change directory to $path: $!");
+        $gslogger->warn("Coudln't change directory to $path: $!", $gsID);
+        $gslogger->setstatus("startfailed", $gsID);
+        return;
+    }
+
     my $child = POE::Wheel::Run->new(
         Program     => [ "./hlds_run", @$params ],
         StdoutEvent => "got_child_stdout",
         StderrEvent => "got_child_stderr",
         CloseEvent  => "got_child_close",
-    ) or $logger->warn("Error: $!");
+    );
+
+    if ( !$child ) {  
+        $logger->warn("Error while starting gameserver: $!");
+        $gslogger->warn("Error while starting gameserver: $!", $gsID);
+        $gslogger->setstatus("startfailed", $gsID);
+    }
+
     $_[HEAP]->{wheel} = $child;
+	
+    $gslogger->warn("Gameserver started succesfully.", $gsID);
+    $gslogger->setstatus("started", $gsID);
 
 }
 
 sub child_stdout {
     my $text = $_[ARG0];
-    $logger->info( __PACKAGE__ . " " . $_[HEAP]->{wheel}->PID() . " OUTPUT: $text" );
+    
+    open my $filehandle, '>>', 'LOG_12_JAN_2010.log';
+        print $filehandle $text . "\n";
+    close $filehandle;
+        
 }
 
 sub child_stderr {
     my $text = $_[ARG0];
-    $logger->warn( __PACKAGE__ . " " . $_[HEAP]->{wheel}->PID() . " ERROR: $text" );
+
+    open my $filehandle, '>>', 'LOG_12_JAN_2010.log';
+        print $filehandle $text . "\n";
+    close $filehandle;
+    
+
 }
 
 sub child_close {
@@ -184,38 +235,31 @@ sub reinstall {
     my $heap = $_[HEAP];
     my $path = $heap->{path};
     my $port = $heap->{port};
+    my $gsID = $heap->{gsID};
 
     if ( !-e $path . "/hlds_run" ) {
-        $logger->info("There isn't installed a gameserver in $path, we are going to install it now");
+        if ( !-e $path ) {
+            $logger->info("There isn't installed a gameserver in $path, we are going to install it now");
+            $gslogger->warn("There isn't installed a gameserver in $path, we are going to install it now");
+        }
     }
     else {
-
-            
-        if ( $_[HEAP]{wheel} ) {
-
-            if ( $_[HEAP]->{wheel}->put("quit") ) {
-                $logger->warn("Error while stopping gameserver: $!");
-                return;
-            }
-
-            if ( !$_[HEAP]->{wheel}->kill(9) ) {
-                $logger->warn("Error while killing the gameserver: $!");
-                return;
-            }
-        }
-
-            if ( !rmtree($path) ) {
-                $logger->warn("Couldn't delete gameserver in $path");
-                return;            
-            }
-
         
+        if ( !rmtree($path) ) {
+            $logger->warn("Couldn't delete gameserver in $path: $!");
+            $gslogger->warn("Couldn't delete gameserver in $path: $!");
+            $gslogger->setstatus("deinstallfail", $gsID);
+            return;            
+        }     
         
         $logger->info("Deinstallation of gameserver in $path finished successful.");
-
+        $gslogger->warn("The deinstallation of gameserver finished successfully.", $gsID);
+        $gslogger->setstatus("deinstallcompleted", $gsID);
     }
 
     $logger->info("Beginn with installtion of gameserver in $path.");
+    $gslogger->warn("Starting new installation of gameserver", $gsID);
+    $gslogger->setstatus("startinstall", $gsID);
     POE::Kernel->delay("_install" => 5 );
 
 }
@@ -224,29 +268,36 @@ sub stop_gameserver {
     my $heap = $_[HEAP];
     my $path = $heap->{path};
     my $port = $heap->{port};
-    my $gsID = $heap->{gsID};
+    my $gsID = $_[ARG1];
 
     POE::Kernel->alias_remove ( $_[HEAP]->{path} );
 
     if ( !-e "$path/hlds_run" ) { 
         $logger->warn("There isn't installed, a gameserver in '$path'");
+        $gslogger->warn("Coudln't find gameserver in $path, please reinstall it.", $gsID);
+        $gslogger->setstatus("nogsstop", $gsID);
     }
     else {
         
         if ( $_[HEAP]->{wheel}->put("quit") ) {
             $logger->warn("Error while stopping gameserver: $!");
+            $gslogger->warn("An error occured while stopping gameserver: $!", $gsID);
+            $gslogger->setstatus("stopfail", $gsID);
             return;
         }
 
         if ( !$_[HEAP]->{wheel}->kill(9) ) {
             $logger->warn("Error while killing the gameserver: $!");
+            $gslogger->warn("An error occured while stopping gameserver: $!", $gsID);
+            $gslogger->setstatus("stopfail", $gsID);
             return;
         }
         
 
 
         $logger->info("Gameserver has stopped successful.");
-        $gslogger->warn("Gameserver has stopped successful.");
+        $gslogger->warn("Gameserver has stopped successful.", $gsID);
+        $gslogger->setstatus("stopped", $gsID);
     }
 }
 
@@ -263,14 +314,16 @@ sub process_command {
     # send the commands from $_[ARG0] to the server
 
     my $command = $_[ARG1];
+    my $gsID    = $_[ARG3];
 
     if ( $_[HEAP]{wheel}->put($command) ) {
         $logger->warn("Error while putting $command in wheel: $!");
+        $gslogger->warn("Couldn't post command $command to gameserver: $!", $gsID);
         return;
     }
 
     $logger->warn("Put command sucessfull into wheel !");
-
+    $gslogger->warn("Processed command '$command' successful.", $gsID);
 }
 
 sub restart {
@@ -282,11 +335,13 @@ sub restart {
 
     my $heap = $_[HEAP];
     my $path = $heap->{path};
+    my $gsID = $heap->{gsID};
 
     POE::Kernel->yield('_stop_gameserver');
     POE::Kernel->yield('_start_gameserver');
 
     $logger->info("Gameserver in $path did restart succesful.");
+    $gslogger->warn("Gameserver in $path has restarted successfully.", $gsID);
 }
 
 sub install {
@@ -294,41 +349,56 @@ sub install {
     my $path        = $heap->{path};
     my $PACKAGE_DIR = $heap->{packages};
     my $port        = $heap->{port};
+    my $gsID        = $heap->{gsID};
 
     unless ( $port >= 1024 && $port <= 65535 ) {
         $logger->info("We need a port to install the Gameserver");
+        $gslogger->warn("Installation failed: No port has been given.", $gsID);
+        $gslogger->setstatus("installfail", $gsID);
         return;
     }
 
     if ( -e "$path/hlds_run"  ) {
         $logger->warn("It seems, that there is already installed a gameserver in $path");
+        $gslogger->warn("There is no gameserver in $path, please reinstall it.", $gsID);
+        $gslogger->setstatus("installfail", $gsID);
         return;
     }
 
     my $folder = $PACKAGE_DIR . "/Gameserver/Counter-Strike/";
 
     if ( !-e $folder ) {
-    	$logger->warn(" The source directory $folder doesn'e exists.");
-	return;    
+    	$logger->warn("The source directory $folder doesn'e exists.");
+        $gslogger->warn("Couldn't find the source dir of gameserver files, please contact the administration.", $gsID);
+        $gslogger->setstatus("installfail", $gsID);
+	    return;    
     }
 
     if ( !mkdir($path) ) {
-        $logger->warn(" Error while creating directory '$path': $!");
+        $logger->warn("Error while creating directory '$path': $!");
+        $gslogger->warn("Couldn't create directory: $!", $gsID);
+        $gslogger->setstatus("installfail", $gsID);
         return;
     }
 
     if ( !chdir($folder) ) {
-        $logger->warn( " Error while chainging directory to '$folder'");
+        $logger->warn("Error while chainging directory to '$folder': $!");
+        $gslogger->warn("Error while chainging directory to '$folder': $!", $gsID);
+        $gslogger->setstatus("installfail", $gsID);
         return;
     }
 
     my $file = File::NCopy->new(recursive => 1, preserve => 1);
 
     if ( !$file->copy(".", $path . "/" ) ) {
-        $logger->warn( " Error while copying '$folder' to '$path': $!");
+        $logger->warn("Error while copying '$folder' to '$path': $!");
+        $gslogger->warn("Error while copying '$folder' to '$path': $!");
+        $gslogger->setstatus("installfail", $gsID);
         return;
     }
 
+    $gslogger->warn("Installation complete, starting the gameserver...", $gsID);
+    $gslogger->setstatus("installed", $gsID);
     $logger->info("Installation finished successful");
     POE::Kernel->alias_set($path);
     POE::Kernel->yield('_start_gameserver');
@@ -339,9 +409,11 @@ sub remove {
     my $path = $heap->{path};
     my $user = $heap->{user};
     my $port = $heap->{port};
+    my $gsID = $heap->{gsID};
 
     if ( !-e $path . "/hlds_run" ) { 
-        $logger->warn("There isn't installed a gameserver in $path, jump over to installation");   
+        $logger->warn("There isn't installed a gameserver in $path, jump over to installation");
+        $gslogger->warn("The gameserver hasn't been installed, jumping to installation.");
     }
     else {
 
@@ -363,22 +435,33 @@ sub _remove {
     my $heap = $_[HEAP];
     my $path = $heap->{path};
     my $port = $heap->{port};
+    my $gsID = $heap->{gsID};
 
     unless ($port) {
         $logger->warn("Dont have a server port. Exiting.");
+        $gslogger->warn("No gameserver port !", $gsID);
+        $gslogger->setstatus("deinstallfail", $gsID);
         return;
     }
 
     unless ($path) {
         $logger->warn("We can not remove a gameserver without the server part. Exiting.");
+        $gslogger->warn("We can't remove a server until we have a server part.", $gsID);
+        $gslogger->setstatus("deinstallfail", $gsID);
         return;
     }
 
+    $logger->warn($path);
+    return;
     if ( !rmtree($path) ) {
         $logger->warn("Couldn't delete directoy from gameserver in $path: $!");
+        $gslogger->warn("Couldn't delete directoy from gameserver in $path: $!", $gsID);
+        $gslogger->setstatus("deinstallfail", $gsID);
         return;
     }
-
+    
+    $gslogger->warn("Deinstallation finished successful.", $gsID);
+    $gslogger->setstatus("deinstalled", $gsID);
     $logger->info("Deinstallation finished succesfull in $path.");
 }
 
