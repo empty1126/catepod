@@ -1,5 +1,8 @@
 # need to fix the start/stop of catepod - IT JUST WONT WORK ! FIXED WITH AWK
 # need to fix crashes of catepod by sending stop gs on a not running gs ! FIXED - It jused needed to be remove the gs' alias {$path}
 # need to fix data-string php sided while starting ( checking whether the gs is cs1.6/dod and remove pingboost, 
-# otherwise the server is gonna crash !
+# otherwise the server is gonna crash ! FIXED !
+# need to fix gsID, insert into the data strings, sended by php ! FIXED !
+# need to check whether the poco is running already, and if so informate the loggs ! FIXED !
+# need to check start/stop/restart | install/deinstall/reinstall ! DONE - ALL WORKS GREATLY !
 #
