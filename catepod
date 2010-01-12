@@ -60,10 +60,11 @@ our $logger   = Catepod::Logger->new($NAME);
 our $gslogger = Catepod::GsLogger->new($NAME);
 
 sub DEBUG() {
-    eval {
-        my $debuggmsg = ( caller 2 )[3];
-        $logger->info("DEBUG: $debuggmsg");
-    };
+
+    #eval {
+    #    my $debuggmsg = ( caller 2 )[3];
+    #    $logger->info("DEBUG: $debuggmsg");
+    #};
 }
 
 open my $lockfile, '>', $PIDFILE
@@ -74,7 +75,6 @@ flock( $lockfile, LOCK_EX | LOCK_NB )
 print {$lockfile} $$ . "\n"
   or $logger->error("Couldn't write PID ($$) to $PIDFILE: $!");
 
-# dropping the privileges
 #drop_privileges($RUNAS_USER);
 
 POE::Session->create(
@@ -83,7 +83,8 @@ POE::Session->create(
         _stop    => \&stop,
         _default => sub {
             my ( $event, $args ) = @_[ ARG0, ARG1 ];
-            $logger->warn("Received unknown signal: $event");
+
+            #$logger->warn("Received unknown signal: $event");
         },
         sig_shutdown      => \&sig_shutdown,
         pipe_data         => \&pipe_data,
@@ -92,11 +93,17 @@ POE::Session->create(
         pipe_error        => \&pipe_error,
         add_gameserver    => \&add_gameserver,
         delete_gameserver => \&delete_gameserver,
+        foo               => \&foo,
     },
     heap => { gameserver => {}, }
 );
 
 POE::Kernel->run();
+
+sub foo {
+    $logger->info("test");
+    POE::Kernel->alarm( foo => int( time() + 5 ) );
+}
 
 sub add_gameserver {
     DEBUG;
@@ -116,14 +123,16 @@ sub start {
     my $user_id = $>;
     $logger->info("version $VERSION Starting as user $user_id");
 
-    #open my $fh, '<', $PIPE_DIRECTORY
-    #  or do { my $errstr = "Couldn't open pipe for reading: $!"; $logger->warn($errstr); die($errstr) };
     $_[HEAP]->{fifo} = POE::Wheel::FollowTail->new(
         Filename   => $PIPE_DIRECTORY,
         InputEvent => "pipe_data",
         ResetEvent => "pipe_reset",
         ErrorEvent => "pipe_error",
     ) or $logger->warn("Couldn't spawn wheel: $!");
+
+    $_[HEAP]->{next_alarm_time} = int( time() ) + 5;
+    $_[KERNEL]->alarm( foo => $_[HEAP]->{next_alarm_time} );
+
     POE::Kernel->sig( INT => "sig_shutdown" );
     POE::Kernel->alias_set('catepod');
 }
@@ -131,9 +140,10 @@ sub start {
 sub stop {
     DEBUG;
     POE::Kernel->alias_remove('catepod');
+
     $logger->info("Stopping.");
-    flock( $lockfile, LOCK_UN )
-      or $logger->warn("Failed to unlock $PIDFILE: $!");
+
+    flock( $lockfile, LOCK_UN ) or $logger->warn("Failed to unlock $PIDFILE: $!");
 }
 
 sub pipe_data {
@@ -185,6 +195,7 @@ sub process_command {
         my $game       = $data->{game};
         my $params_ref = $data->{params};
         my $install    = $data->{install};
+        my $gsID       = $data->{gsID};
         my $poco;
         my $gsdir = $data->{path};
 
@@ -192,20 +203,27 @@ sub process_command {
             $logger->warn("server port: '$port' is to low, or to high.");
             return;
         }
+
         unless ( $poco = $conf->{games}->{$game} ) {
             $logger->warn(
                 "Do not know what to do with game '$game', perhaps you forgot to specify a poco for it in the config?"
             );
             return;
         }
+
         unless ( @$params_ref > 0 ) {
             $logger->warn("cannot start gameserver '$port'  without params.");
             return;
         }
 
+        unless ($gsID) {
+            $logger->warn("You don't gave me the server ID, exiting...");
+            return;
+        }
+
         my $ins;
-        if    ( $install eq "install" )   { $ins = ", while install it"; }
-        elsif ( $install eq "reinstall" ) { $ins = ", while reinstalling it"; }
+        if    ( $install != "install" )   { $ins = ", while install it"; }
+        elsif ( $install != "reinstall" ) { $ins = ", while reinstalling it"; }
 
         $logger->info( "Starting $poco with params: '" . "@$params_ref" . "' in: '$gsdir'" . $ins . "." );
 
@@ -214,6 +232,7 @@ sub process_command {
         $require_name =~ s/::/\//g;
         $require_name .= '.pm';
         eval { require $require_name; };
+
         if ($@) { $logger->info("Error while compilling $poco: $@"); return; }
         eval {
             $poco->create(
@@ -221,7 +240,8 @@ sub process_command {
                 params   => $params_ref,
                 install  => $install,
                 packages => $PACKAGE_DIR,
-                port     => $port
+                port     => $port,
+                gsID     => $gsID
             );
         };
 
@@ -237,8 +257,7 @@ sub process_command {
         if ( $data->{install} eq "remove" ) {
             if ( !$_[KERNEL]->post( $path => 'remove' ) ) {
                 if ( $! eq "No such process" ) {
-                    $gslogger->warn( "The server doesn't run, but it have to be for removing, aborting deinstallation.",
-                        $gsID );
+                    $gslogger->warn( "The server doesn't run, aborting deinstallation.", $gsID );
                     $logger->info("The server have to been running before we can remove it.");
                 }
                 else {
@@ -250,10 +269,16 @@ sub process_command {
 
         $logger->info( "Attempting to stop Gameserver in: " . $path );
 
-        if ($!) { $logger->info("$!"); }
-        if ( !$_[KERNEL]->post( $path => '_stop_gameserver' ) ) {
-            $logger->warn("Error while posting '_stop_gameserver' to $path: $!");
-            return;
+        if ( !$_[KERNEL]->post( $path => '_stop_gameserver', "gsID" => $gsID ) ) {
+            if ( $! eq "No such process" ) {
+                $logger->warn("There doesn't run a gameserver in $path");
+                $gslogger->warn( "The gameserver doesn't run, can't stop it.", $gsID );
+                $gslogger->setstatus( "stopped", $gsID );
+            }
+            else {
+                $logger->warn("Error while posting '_stop_gameserver' to $path: $!");
+                return;
+            }
         }
 
     }
@@ -271,17 +296,6 @@ sub process_command {
             $logger->warn("Couldn't start Server in $path: $!");
             return;
         }
-    }
-    elsif ( $data->{command} eq "reinstall" ) {
-        my $path = $data->{path};
-
-        $logger->info("Start reinstallation of Gameserver in $path.");
-
-        if ( !$_[KERNEL]->post( $path => '_reinstall' ) ) {
-            $logger->warn("Coudln't send reinstall signal to gameserver in $path, maybe there doesn't run one ?: $!");
-            return;
-        }
-
     }
     elsif ( $data->{command} eq "install_mod" ) {
         my $path        = $data->{path};
@@ -352,7 +366,7 @@ sub process_command {
         my $path = $data->{path};
 
         if ( !$_[KERNEL]->post( $path => '_process_command', "command" => $cmd ) ) {
-            $logger->warn("Error while processing command $cmd to $path");
+            $logger->warn("Error while processing command $cmd to $path: $!");
             return;
         }
     }
