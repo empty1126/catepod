@@ -18,7 +18,7 @@ sub warn {
     my $gsID    = shift;
 
     my $dsn     = "DBI:mysql:database=gswi;host=localhost;port=3306";
-    my $dbh     = DBI->connect( $dsn, 'xxxx', 'xxx' );
+    my $dbh     = DBI->connect( $dsn, 'root', 'k23771' );
     
     my $crtime  = Time::HiRes::time;
         
@@ -30,21 +30,30 @@ sub warn {
     $dbh->disconnect(); 
 }
 
+sub setstatus {
+    my $self    = shift;
+    my $status  = shift;
+    my $gsID    = shift;
+
+    if ( $status eq "" || $gsID eq "" ) { }
+    else {
+
+        my $dsn     = "DBI:mysql:database=gswi;host=localhost;port=3306";
+        my $dbh     = DBI->connect( $dsn, 'xxxx', 'xxxx' );
+    
+        my $crtime  = Time::HiRes::time;
+    
+        my $sth     = $dbh->prepare(qq{UPDATE gswi_gameserver SET status="$status" WHERE gsID="$gsID"});
+   
+        $sth->execute;
+        $sth->finish;
+    
+        $dbh->disconnect(); 
+    }
+}
+
 DESTROY {
     print "";
 }
 
 1;
-
-#
-#Levels
-#
-#    * LOG_EMERG - system is unusable
-#    * LOG_ALERT - action must be taken immediately
-#    * LOG_CRIT - critical conditions
-#    * LOG_ERR - error conditions
-#    * LOG_WARNING - warning conditions
-#    * LOG_NOTICE - normal, but significant, condition
-#    * LOG_INFO - informational message
-#    * LOG_DEBUG - debug-level message
-#
