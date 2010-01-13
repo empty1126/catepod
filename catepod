@@ -1,6 +1,19 @@
 #!/usr/bin/perl
 
-### insert header & licensing conditions here
+#
+# -------------------------------------------------  
+#
+# - File..........: catepod
+# - Author........: daemonize <marckloppenburg@gmx.de>
+# - Discription...: Simple daemon construct that does the usual daemon,
+#                   housekeeping, daemonizing, logging, privilege dropping,
+#                   pid file management, interact different gameserver types,
+#                   manage user, etc...
+# - License.......: GPLv2
+# - Created.......: 01 Jun 2009 by <daemonize@catepo.net>
+#
+# ------------------------------------------------- 
+#
 
 use strict;
 use warnings;
@@ -15,6 +28,8 @@ use Catepod::GsLogger;
 use Privileges::Drop;
 use JSON;
 use Fcntl qw/:flock/;
+
+use DBI;
 
 my $configfile = shift @ARGV;
 my $conf;
@@ -93,16 +108,121 @@ POE::Session->create(
         pipe_error        => \&pipe_error,
         add_gameserver    => \&add_gameserver,
         delete_gameserver => \&delete_gameserver,
-        foo               => \&foo,
+        nightlyrestart    => \&nightlyrestart,
     },
     heap => { gameserver => {}, }
 );
 
 POE::Kernel->run();
 
-sub foo {
-    $logger->info("test");
-    POE::Kernel->alarm( foo => int( time() + 5 ) );
+sub nightlyrestart {
+    DEBUG;
+    $logger->warn("Starting nightly restart of gameservers");
+
+    my $dsn = "DBI:mysql:database=gswi;host=localhost;port=3306";
+    my $dbh = DBI->connect( $dsn, 'root', 'k23771' );
+
+    my $sth = $dbh->prepare(qq{SELECT * FROM gswi_nightlyrestart});
+    $sth->execute();
+
+    while ( my $ref = $sth->fetchrow_hashref ) {
+        my $gsID = $ref->{gsID};
+
+        $gslogger->warn( "Nightlyrestart restart", $gsID );
+        $gslogger->setstatus( "nightlyrestart", $gsID );
+
+        my $sth1 = $dbh->prepare(qq{SELECT * FROM gswi_gameserver WHERE gsID="$gsID"});
+        $sth1->execute();
+
+        my $ref1  = $sth1->fetchrow_hashref();
+        my $owner = $ref1->{owner};
+
+        my $sth2 = $dbh->prepare(qq{SELECT * FROM gswi_user WHERE userID="$owner"});
+        $sth2->execute();
+        my $ref2 = $sth2->fetchrow_hashref();
+        my $user = $ref2->{user};
+
+        my $port   = $ref1->{port};
+        my $game   = $ref1->{game};
+        my $ip     = $ref1->{ip};
+        my $tick   = $ref1->{tickrate};
+        my $map    = $ref1->{'map'};
+        my $player = $ref1->{player};
+        my $update = $ref1->{autoupdate};
+        my $pboost = $ref1->{pingboost};
+
+        my $path = $GSWI_DIR . "gameserver/$user/$port/";
+
+        if ( !chdir($path) ) {
+            $logger->warn("Couldn't chdir to $path to restart it.");
+            $gslogger->warn( "Couldn't chdir to $path to restart it.", $gsID );
+            $gslogger->setstatus( "nightlyrestartfail", $gsID );
+            return;
+        }
+
+        my $excutable;
+        my $poco_start;
+        if ( $game == 'cs' ) {
+            $poco_start = 'counter-strike';
+            $excutable  = 'hlds_run';
+            $pboost     = '';
+        }
+        elsif ( $game == 'css' ) {
+            $poco_start = 'counter-strike-source';
+            $excutable  = 'srcds_run';
+            $pboost     = ', "-pingboost", "' . $pboost . '"';
+        }
+        elsif ( $game == 'dod' ) {
+            $excutable  = 'hlds_run';
+            $poco_start = 'day-of-defeat';
+            $pboost     = '';
+        }
+        elsif ( $game == 'dods' ) {
+            $excutable  = 'srcds_run';
+            $poco_start = 'day-of-defeat-source';
+            $pboost     = ', "-pingboost", "' . $pboost . '"';
+        }
+
+        if ($update) {
+            $update = ', "-autoupdate"';
+        }
+        else { $update = ''; }
+
+        open( my $filehandle, '>', $PIPE_DIRECTORY );
+
+        print $filehandle '{"command":"stop", "gsID":' . $gsID . ', "path":"' . $path . '", "install":"false"}' . "\n";
+        print $filehandle '{"command":"start", "gsID":' 
+          . $gsID
+          . ', "path":"'
+          . $path
+          . '", "port":'
+          . $port
+          . ', "install":"false", "game":"'
+          . $poco_start
+          . '", "params":["-game", "cstrike", "-port", "'
+          . $port . '"'
+          . ', "+map", "'
+          . $map . '"'
+          . ', "+maxplayers", "'
+          . $player
+          . '", "-tickrate", "'
+          . $tick . '"'
+          . $pboost . ''
+          . $update . ']}' . "\n";
+
+        #close($filehandle);
+
+        $gslogger->warn( "Nightlyrestart finished !", $gsID );
+        $gslogger->setstatus("started");
+        $sth1->finish();
+        $sth2->finish();
+    }
+
+    $sth->finish;
+
+    $dbh->disconnect();
+
+    POE::Kernel->alarm( nightlyrestart => ( int( time() ) + ( 24 * 60 * 60 ) ) );
 }
 
 sub add_gameserver {
@@ -130,8 +250,9 @@ sub start {
         ErrorEvent => "pipe_error",
     ) or $logger->warn("Couldn't spawn wheel: $!");
 
-    $_[HEAP]->{next_alarm_time} = int( time() ) + 5;
-    $_[KERNEL]->alarm( foo => $_[HEAP]->{next_alarm_time} );
+    #POE::Kernel->yield('nightlyrestart');
+
+    $_[KERNEL]->alarm( nightlyrestart => ( ( int( time() / 86400 ) * 86400 ) + ( 24 * 60 * 60 ) + ( 3 * 60 * 60 ) ) );
 
     POE::Kernel->sig( INT => "sig_shutdown" );
     POE::Kernel->alias_set('catepod');
@@ -302,20 +423,29 @@ sub process_command {
         my $mod         = $data->{mod};
         my $install     = $data->{install};
         my $PACKAGE_DIR = $conf->{packagedir} . "/Addons/";
+        my $gsID        = $data->{gsID};
         my $poco;
 
-        if ( !-e "$PACKAGE_DIR" ) {
+        if ( !-e $PACKAGE_DIR ) {
             $logger->warn("Addons directory '$PACKAGE_DIR' does not exists");
+            $gslogger->warn( "Coudln't find direcotry with Addon source files.", $gsID );
+            $gslogger->setstatus( "modinstallfail", $gsID );
             return;
         }
 
-        if ( !-e "$path" ) {
+        if ( !-e $path ) {
             $logger->warn("There isnt installed a gameserver in $path !");
+            $gslogger->warn( "There isn't installed a gameserver in $path, please reinstall it.", $gsID );
+            $gslogger->setstatus( "modinstallfail", $gsID );
             return;
         }
 
         unless ( $poco = $conf->{mods}->{$mod} ) {
             $logger->warn("Do not know what todo with $mod, perhabs you forgot to specify a poco for $mod ?");
+            $gslogger->warn(
+                "Don't know what I should do with $mod, perhabs it has been forgotten to specify a poco for it.",
+                $gsID );
+            $gslogger->setstatus( "modinstallfail", $gsID );
             return;
         }
 
@@ -324,7 +454,15 @@ sub process_command {
         $require_name .= '.pm';
         eval { require $require_name; };
         if ($@) { $logger->info("Error while compilling $poco: $@"); return; }
-        eval { $poco->create( path => $path, install => $install, mod => $mod, package_dir => $PACKAGE_DIR ); };
+        eval {
+            $poco->create(
+                path        => $path,
+                install     => $install,
+                mod         => $mod,
+                package_dir => $PACKAGE_DIR,
+                gsID        => $gsID
+            );
+        };
 
         if ($@) {
             $logger->info("Error while starting $poco: $@");

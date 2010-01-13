@@ -9,8 +9,3 @@ INSTALL:
 This thing doesn't have an install routine.
 write up a makefile, sometimes soon!
 
-LICENSE
-catepod, Copyright (C) 2009 whoppix <jwrings@gmail.com>
-    catepod comes with ABSOLUTELY NO WARRANTY; for details see the file `LICENSE´.
-    This is free software, and you are welcome to redistribute it
-    under certain conditions; see the LICENSE file for details.
