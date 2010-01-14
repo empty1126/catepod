@@ -1,1 +1,0 @@
-echo '{"command":"reinstall", "path":"/home/gameserver/27015/", "port":27015, "params":["-game", "cstrike", "+map", "de_dust2", "-port", "27015"], "game":"counter-strike", "user":"empty"}' > /tmp/gswi/socket
