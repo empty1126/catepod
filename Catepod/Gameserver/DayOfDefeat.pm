@@ -1,4 +1,4 @@
-package Catepod::Gameserver::CounterStrike;
+package Catepod::Gameserver::DayOfDefeat;
 
 use strict;
 use warnings;
@@ -203,12 +203,11 @@ sub start_gameserver {
     $gslogger->warn("Gameserver started succesfully.", $gsID);
     $gslogger->setstatus("started", $gsID);
 
-
 }
 
 sub child_stdout {
     my $text = $_[ARG0];
-
+    
     chdir("logs/");
 
     my ($Sekunden, $Minuten, $Stunden, $Monatstag, $Monat, $Jahr, $Wochentag, $Jahrestag, $Sommerzeit) = localtime(time);
@@ -230,7 +229,7 @@ sub child_stdout {
 sub child_stderr {
     my $text = $_[ARG0];
     
-    chdir ("logs/");
+    chdir("logs/");
 
     my ($Sekunden, $Minuten, $Stunden, $Monatstag, $Monat, $Jahr, $Wochentag, $Jahrestag, $Sommerzeit) = localtime(time);
     $Monat+=1;
@@ -244,7 +243,7 @@ sub child_stderr {
 
     open my $filehandle, '>>', $file;
         print $filehandle $text . "\n";
-    close $filehandle;    
+    close $filehandle;
 }
 
 sub child_close {
@@ -391,7 +390,7 @@ sub install {
         return;
     }
 
-    my $folder = $PACKAGE_DIR . "/Gameserver/Counter-Strike/";
+    my $folder = $PACKAGE_DIR . "/Gameserver/Day-of-defeat/";
 
     if ( !-e $folder ) {
     	$logger->warn("The source directory $folder doesn'e exists.");
@@ -407,7 +406,7 @@ sub install {
         return;
     }
 
-   if ( !chdir($folder) ) {
+    if ( !chdir($folder) ) {
         $logger->warn("Error while chainging directory to '$folder': $!");
         $gslogger->warn("Error while chainging directory to '$folder': $!", $gsID);
         $gslogger->setstatus("installfail", $gsID);

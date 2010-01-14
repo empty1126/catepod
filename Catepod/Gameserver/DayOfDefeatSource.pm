@@ -1,4 +1,4 @@
-package Catepod::Gameserver::CounterStrike;
+package Catepod::Gameserver::DayOfDefeatSource;
 
 use strict;
 use warnings;
@@ -36,13 +36,16 @@ sub create {
     my $PACKAGE_DIR;
     my $gsID;
 
+    my @params;
     if ( exists $options{'params'} ) {
-        $params = $options{'params'};
+        @params = $options{'params'};
         delete $options{'params'};
     }
     else {
         croak( __PACKAGE__ . '->new needs a \'params\' argument.' );
     }
+
+    $logger->info("@params");
 
     if ( exists $options{'gsID'} ) {
         $gsID   = $options{'gsID'};
@@ -126,7 +129,7 @@ sub start {
     my $params  = $heap->{params};
     my $gsID    = $heap->{gsID};
 
-    if ( -e "$path/hlds_run"  ) {
+    if ( -e "$path/orangebox/srcds_run"  ) {
         if ( $install != "remove" && $install != "reinstall" )  {
             $logger->warn("You told me to install a gameserver, but it seems there is already one installed.");
             $gslogger->warn("It seems that in $path is already installed a gameserver.", $gsID);
@@ -135,7 +138,7 @@ sub start {
         }
     }
     
-    if ( !-e "$path/hlds_run" ) {
+    if ( !-e "$path/orangebox/srcds_run" ) {
         unless ( $install eq  "install" ) {
             unless ( $install eq "reinstall" ) {
                 $logger->warn("There is no gameserver in $path, and you told me not to install one, aborting.");
@@ -178,7 +181,7 @@ sub start_gameserver {
     my $params  = $heap->{params};
     my $gsID    = $heap->{gsID};
 
-    if ( !chdir($path) ) {
+    if ( !chdir($path . "/orangebox/") ) { #dods is powered by orangebox, we need to get into the directory ./orangebox/
         $logger->warn("Couldn't change directory to $path: $!.");
         $gslogger->warn("Coudln't change directory to $path: $!.", $gsID);
         $gslogger->setstatus("startfail", $gsID);
@@ -186,7 +189,7 @@ sub start_gameserver {
     }
 
     my $child = POE::Wheel::Run->new(
-        Program     => [ "./hlds_run", @$params ],
+        Program     => [ "./srcds_run", @$params ],
         StdoutEvent => "got_child_stdout",
         StderrEvent => "got_child_stderr",
         CloseEvent  => "got_child_close",
@@ -203,12 +206,11 @@ sub start_gameserver {
     $gslogger->warn("Gameserver started succesfully.", $gsID);
     $gslogger->setstatus("started", $gsID);
 
-
 }
 
 sub child_stdout {
     my $text = $_[ARG0];
-
+    
     chdir("logs/");
 
     my ($Sekunden, $Minuten, $Stunden, $Monatstag, $Monat, $Jahr, $Wochentag, $Jahrestag, $Sommerzeit) = localtime(time);
@@ -230,7 +232,7 @@ sub child_stdout {
 sub child_stderr {
     my $text = $_[ARG0];
     
-    chdir ("logs/");
+    chdir("logs/");
 
     my ($Sekunden, $Minuten, $Stunden, $Monatstag, $Monat, $Jahr, $Wochentag, $Jahrestag, $Sommerzeit) = localtime(time);
     $Monat+=1;
@@ -244,7 +246,7 @@ sub child_stderr {
 
     open my $filehandle, '>>', $file;
         print $filehandle $text . "\n";
-    close $filehandle;    
+    close $filehandle;
 }
 
 sub child_close {
@@ -258,7 +260,7 @@ sub reinstall {
     my $port = $heap->{port};
     my $gsID = $heap->{gsID};
 
-    if ( !-e $path . "/hlds_run" ) {
+    if ( !-e $path . "/orangebox/srcds_run" ) {
         if ( !-e $path ) {
             $logger->info("There isn't installed a gameserver in $path, we are going to install it now.");
             $gslogger->warn("There isn't installed a gameserver in $path, we are going to install it now.");
@@ -298,7 +300,7 @@ sub stop_gameserver {
 
     POE::Kernel->alias_remove ( $_[HEAP]->{path} );
 
-    if ( !-e "$path/hlds_run" ) { 
+    if ( !-e "$path/orangebox/srcds_run" ) { 
         $logger->warn("There isn't installed, a gameserver in '$path'.");
         $gslogger->warn("Coudln't find gameserver in $path, please reinstall it.", $gsID);
         $gslogger->setstatus("stopfail", $gsID);
@@ -384,14 +386,14 @@ sub install {
         return;
     }
 
-    if ( -e "$path/hlds_run"  ) {
+    if ( -e "$path/orangebox/srcds_run"  ) {
         $logger->warn("It seems, that there is already installed a gameserver in $path.");
         $gslogger->warn("There is no gameserver in $path, please reinstall it.", $gsID);
         $gslogger->setstatus("installfail", $gsID);
         return;
     }
 
-    my $folder = $PACKAGE_DIR . "/Gameserver/Counter-Strike/";
+    my $folder = $PACKAGE_DIR . "/Gameserver/Day-of-defeat-Source/";
 
     if ( !-e $folder ) {
     	$logger->warn("The source directory $folder doesn'e exists.");
@@ -407,7 +409,7 @@ sub install {
         return;
     }
 
-   if ( !chdir($folder) ) {
+    if ( !chdir($folder) ) {
         $logger->warn("Error while chainging directory to '$folder': $!");
         $gslogger->warn("Error while chainging directory to '$folder': $!", $gsID);
         $gslogger->setstatus("installfail", $gsID);
@@ -437,7 +439,7 @@ sub remove {
     my $port = $heap->{port};
     my $gsID = $heap->{gsID};
 
-    if ( !-e $path . "/hlds_run" ) { 
+    if ( !-e $path . "/orangebox/srcds_run" ) { 
         $logger->warn("There isn't installed a gameserver in $path, jump over to installation");
         $gslogger->warn("The gameserver hasn't been installed, jumping to installation.");
     }
