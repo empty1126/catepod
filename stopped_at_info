@@ -5,4 +5,10 @@
 # need to fix gsID, insert into the data strings, sended by php ! FIXED !
 # need to check whether the poco is running already, and if so informate the loggs ! FIXED !
 # need to check start/stop/restart | install/deinstall/reinstall ! DONE - ALL WORKS GREATLY !
+# need to fix the nightlyrestart, while() is blocking the poco untill the system()'s call has finished ! FIXED ! - but new array() problems
+# need to fix the grep/regex while installting metamod (cs1.6) FIXED ! 
+# need to implement css/dod/dods ! DONE ! ALL WORKS FANTASTLY
+# need to implement user's add and remove section ! DONE ! WORKS 
+# need to implement more modifications !
+# need to implement the fastdownload map download -server
 #
