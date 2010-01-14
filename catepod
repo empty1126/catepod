@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 #
-# -------------------------------------------------  
+# -------------------------------------------------
 #
 # - File..........: catepod
 # - Author........: daemonize <marckloppenburg@gmx.de>
@@ -12,7 +12,7 @@
 # - License.......: GPLv2
 # - Created.......: 01 Jun 2009 by <daemonize@catepo.net>
 #
-# ------------------------------------------------- 
+# -------------------------------------------------
 #
 
 use strict;
@@ -30,6 +30,9 @@ use JSON;
 use Fcntl qw/:flock/;
 
 use DBI;
+
+use File::Path;
+use Linux::usermod;
 
 my $configfile = shift @ARGV;
 my $conf;
@@ -162,25 +165,31 @@ sub nightlyrestart {
 
         my $excutable;
         my $poco_start;
-        if ( $game == 'cs' ) {
+        my $start_game;
+
+        if ( $game eq 'cs' ) {
             $poco_start = 'counter-strike';
             $excutable  = 'hlds_run';
-            $pboost     = '';
+            $pboost     = '""';
+            $start_game = 'cstrike';
         }
-        elsif ( $game == 'css' ) {
+        elsif ( $game eq 'css' ) {
             $poco_start = 'counter-strike-source';
             $excutable  = 'srcds_run';
             $pboost     = ', "-pingboost", "' . $pboost . '"';
+            $start_game = 'cstrike';
         }
-        elsif ( $game == 'dod' ) {
+        elsif ( $game eq 'dod' ) {
             $excutable  = 'hlds_run';
             $poco_start = 'day-of-defeat';
-            $pboost     = '';
+            $pboost     = '""';
+            $start_game = 'dod';
         }
-        elsif ( $game == 'dods' ) {
+        elsif ( $game eq 'dods' ) {
             $excutable  = 'srcds_run';
             $poco_start = 'day-of-defeat-source';
             $pboost     = ', "-pingboost", "' . $pboost . '"';
+            $start_game = 'dod';
         }
 
         if ($update) {
@@ -188,29 +197,71 @@ sub nightlyrestart {
         }
         else { $update = ''; }
 
-        open( my $filehandle, '>', $PIPE_DIRECTORY );
+        unless ( $port >= 1024 && $port <= 65535 ) {
+            $logger->warn("server port: '$port' is to low, or to high.");
+            return;
+        }
 
-        print $filehandle '{"command":"stop", "gsID":' . $gsID . ', "path":"' . $path . '", "install":"false"}' . "\n";
-        print $filehandle '{"command":"start", "gsID":' 
-          . $gsID
-          . ', "path":"'
-          . $path
-          . '", "port":'
-          . $port
-          . ', "install":"false", "game":"'
-          . $poco_start
-          . '", "params":["-game", "cstrike", "-port", "'
-          . $port . '"'
-          . ', "+map", "'
-          . $map . '"'
-          . ', "+maxplayers", "'
-          . $player
-          . '", "-tickrate", "'
-          . $tick . '"'
-          . $pboost . ''
-          . $update . ']}' . "\n";
+        unless ( $poco_start = $conf->{games}->{$poco_start} ) {
+            $logger->warn(
+                "Do not know what to do with game '$game', perhaps you forgot to specify a poco for it in the config?"
+            );
+            return;
+        }
 
-        #close($filehandle);
+        my $params =
+'{"params":["-game", "$start_game", "+map", "$map", "+maxplayers", "$player", "-port", "$port", "-tickrate", "$tick"]}';
+
+        my $hashref;
+        eval { $hashref = from_json($params); };
+
+        my @params = $hashref->{params};
+
+        #$pboost,       $update
+
+        my @prm = "@params";
+
+        print "@prm";
+
+        my $foo         = @params;
+        my $param_count = @params;
+
+        unless ( $param_count > 0 ) {
+            $logger->warn("cannot start gameserver '$port' without params.");
+            return;
+        }
+
+        unless ($gsID) {
+            $logger->warn("You don't gave me the server ID, exiting...");
+            return;
+        }
+
+        $logger->info($param_count);
+
+        #$logger->info( "Starting $poco_start with params: '" . "@$param_count" . "' in: '$path'" );
+
+        my $require_name = $poco_start;
+        $require_name =~ s/::/\//g;
+        $require_name .= '.pm';
+        eval { require $require_name; };
+
+        my $PACKAGE_DIR = $conf->{packagedir};
+
+        if ($@) { $logger->info("Error while compilling $poco_start: $@"); return; }
+        eval {
+            $poco_start->create(
+                path     => $path,
+                packages => $PACKAGE_DIR,
+                gsID     => $gsID,
+                port     => $port,
+                params   => @params
+            );
+        };
+
+        if ($@) {
+            $logger->info("Error while starting $poco_start: $@");
+            return;
+        }
 
         $gslogger->warn( "Nightlyrestart finished !", $gsID );
         $gslogger->setstatus("started");
@@ -343,8 +394,8 @@ sub process_command {
         }
 
         my $ins;
-        if    ( $install != "install" )   { $ins = ", while install it"; }
-        elsif ( $install != "reinstall" ) { $ins = ", while reinstalling it"; }
+        if    ( $install eq "install" )   { $ins = ", while install it"; }
+        elsif ( $install eq "reinstall" ) { $ins = ", while reinstalling it"; }
 
         $logger->info( "Starting $poco with params: '" . "@$params_ref" . "' in: '$gsdir'" . $ins . "." );
 
@@ -353,6 +404,10 @@ sub process_command {
         $require_name =~ s/::/\//g;
         $require_name .= '.pm';
         eval { require $require_name; };
+
+        my $PACKAGE_DIR = $conf->{packagedir};
+
+        $logger->info($params_ref);
 
         if ($@) { $logger->info("Error while compilling $poco: $@"); return; }
         eval {
@@ -468,6 +523,74 @@ sub process_command {
             $logger->info("Error while starting $poco: $@");
             return;
         }
+
+    }
+    elsif ( $data->{command} eq "user_add" ) {
+        my $username = $data->{username};
+        my $password = $data->{password};
+
+        my $home_dir = $GSWI_DIR . "/gameserver/" . $username . "/";
+
+        open my $filehandle, '<', '/etc/passwd';
+        my @slurp = <$filehandle>;
+        close $filehandle;
+
+        if ( grep { $_ =~ m/.*$username.*$/ } @slurp ) {
+            $logger->warn("Couldn't add $username to system: User already exists.");
+            return;
+        }
+
+        if ( !Linux::usermod->add( $username, $password, 500, 1000, "catepod - GSWI USER", $home_dir, "/bin/false" ) ) {
+            $logger->warn("Failed to add $username to system: $!");
+            return;
+        }
+
+        if ( !mkdir($home_dir) ) {
+            $logger->warn("Failed to create user's home directory.");
+            return;
+        }
+
+        my $user   = Linux::usermod->new($username);
+        my $userID = $user->get(2);
+        my $gID    = $user->get(3);
+
+        $logger->warn($userID);
+
+        if ( !chown $userID, $gID, $home_dir ) {
+            $logger->warn("Couldn't give $username rights to $home_dir: $!");
+            return;
+        }
+
+        $logger->info("User $username added to system");
+
+    }
+    elsif ( $data->{command} eq "user_del" ) {
+        my $username = $data->{username};
+        my $home_dir = $GSWI_DIR . "/gameserver/" . $username . "/";
+
+        open my $filehandle, '<', '/etc/passwd';
+        my @slurp = <$filehandle>;
+        close $filehandle;
+
+        if ( !grep { $_ =~ m/.*$username.*$/ } @slurp ) {
+            $logger->warn("Couldn't delete $username: No such user");
+            return;
+        }
+
+        if ( !rmtree($home_dir) ) {
+            $logger->warn("Couldn't delete user's home dir: $!");
+            $logger->warn("$username not deleted !");
+            return;
+        }
+
+        my $user = Linux::usermod->new($username);
+        if ( !Linux::usermod->del($username) ) {
+            $logger->warn("Coudln't delete $username from system: $!");
+            $logger->warn("$username not deleted !");
+            return;
+        }
+
+        $logger->info("$username successfully removed !");
 
     }
     elsif ( $data->{command} eq "install_map" ) {
