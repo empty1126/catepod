@@ -33,6 +33,7 @@ use DBI;
 
 use File::Path;
 use Linux::usermod;
+use Archive::Extract;
 
 my $configfile = shift @ARGV;
 my $conf;
@@ -112,18 +113,29 @@ POE::Session->create(
         add_gameserver    => \&add_gameserver,
         delete_gameserver => \&delete_gameserver,
         nightlyrestart    => \&nightlyrestart,
+        response          => \&reponse,
+        request           => \&request,
     },
     heap => { gameserver => {}, }
 );
 
 POE::Kernel->run();
 
+sub request {
+
+}
+
+sub response {
+    my $response = $_[ARG1];
+    $response->decode_content
+}
+
 sub nightlyrestart {
     DEBUG;
     $logger->warn("Starting nightly restart of gameservers");
 
     my $dsn = "DBI:mysql:database=gswi;host=localhost;port=3306";
-    my $dbh = DBI->connect( $dsn, 'root', 'k23771' );
+    my $dbh = DBI->connect( $dsn, 'xxxx', 'xxxx' );
 
     my $sth = $dbh->prepare(qq{SELECT * FROM gswi_nightlyrestart});
     $sth->execute();
@@ -131,7 +143,7 @@ sub nightlyrestart {
     while ( my $ref = $sth->fetchrow_hashref ) {
         my $gsID = $ref->{gsID};
 
-        $gslogger->warn( "Nightlyrestart restart", $gsID );
+        $gslogger->warn( "Nightlyrestart starts", $gsID );
         $gslogger->setstatus( "nightlyrestart", $gsID );
 
         my $sth1 = $dbh->prepare(qq{SELECT * FROM gswi_gameserver WHERE gsID="$gsID"});
@@ -155,6 +167,12 @@ sub nightlyrestart {
         my $pboost = $ref1->{pingboost};
 
         my $path = $GSWI_DIR . "gameserver/$user/$port/";
+
+        if ( !$_[KERNEL]->post( $path => '_stop_gameserver', "gsID" => $gsID ) ) {
+            $logger->warn("Coudln't stop gameserver in $path, while nightly restart.");
+            $gslogger->warn( "Nightly restart returns: Couldn't stop gameserver !.", $gsID );
+            $gslogger->setstatus( "nightlyrestartfail", $gsID );
+        }
 
         if ( !chdir($path) ) {
             $logger->warn("Couldn't chdir to $path to restart it.");
@@ -210,23 +228,9 @@ sub nightlyrestart {
         }
 
         my $params =
-'{"params":["-game", "$start_game", "+map", "$map", "+maxplayers", "$player", "-port", "$port", "-tickrate", "$tick"]}';
+          [ "-game", "$start_game", "+map", "$map", "+maxplayers", "$player", "-port", "$port", "-tickrate", "$tick" ];
 
-        my $hashref;
-        eval { $hashref = from_json($params); };
-
-        my @params = $hashref->{params};
-
-        #$pboost,       $update
-
-        my @prm = "@params";
-
-        print "@prm";
-
-        my $foo         = @params;
-        my $param_count = @params;
-
-        unless ( $param_count > 0 ) {
+        unless ( @$params > 0 ) {
             $logger->warn("cannot start gameserver '$port' without params.");
             return;
         }
@@ -236,9 +240,7 @@ sub nightlyrestart {
             return;
         }
 
-        $logger->info($param_count);
-
-        #$logger->info( "Starting $poco_start with params: '" . "@$param_count" . "' in: '$path'" );
+        $logger->info( "Starting $poco_start with params: '" . "@$params" . "' in: '$path'" );
 
         my $require_name = $poco_start;
         $require_name =~ s/::/\//g;
@@ -254,7 +256,7 @@ sub nightlyrestart {
                 packages => $PACKAGE_DIR,
                 gsID     => $gsID,
                 port     => $port,
-                params   => @params
+                params   => $params
             );
         };
 
@@ -300,8 +302,6 @@ sub start {
         ResetEvent => "pipe_reset",
         ErrorEvent => "pipe_error",
     ) or $logger->warn("Couldn't spawn wheel: $!");
-
-    #POE::Kernel->yield('nightlyrestart');
 
     $_[KERNEL]->alarm( nightlyrestart => ( ( int( time() / 86400 ) * 86400 ) + ( 24 * 60 * 60 ) + ( 3 * 60 * 60 ) ) );
 
@@ -406,8 +406,6 @@ sub process_command {
         eval { require $require_name; };
 
         my $PACKAGE_DIR = $conf->{packagedir};
-
-        $logger->info($params_ref);
 
         if ($@) { $logger->info("Error while compilling $poco: $@"); return; }
         eval {
@@ -594,9 +592,13 @@ sub process_command {
 
     }
     elsif ( $data->{command} eq "install_map" ) {
-        my $mapname   = $data->{mapname};
-        my $port      = $data->{port};
-        my $path      = "$GSWI_DIR/gameserver/$port";
+        my $mapname = $data->{mapname};
+        my $port    = $data->{port};
+        my $user    = $data->{user};
+        my $path    = "$GSWI_DIR/gameserver/$user/$port";
+        my $game    = $data->{game};
+        my $gsID    = $data->{gsID};
+
         my $FD_SERVER = $data->{fastdownloadserver};
         my $FD_LINK   = $data->{fastdownloadlink};
         my $DL_LINK   = "$FD_SERVER/$FD_LINK";
@@ -606,15 +608,60 @@ sub process_command {
             return;
         }
 
-        if ( $mapname !~ m/.*bsp/ ) {
-            if ( !chdir($path) ) {
-                $logger->warn("Couldn't chdir to $path: $!");
+        if ( $mapname =~ m/.*bsp$/ ) {
+
+            if ( !chdir( $path . "/" . $game . "/maps/" ) ) {
+                $logger->warn("Couldn't chdir to $path/$game: $!");
                 return;
             }
 
-            system(" wget $DL_LINK ");
+            use POE qw(Component::Client::HTTP);
+            use HTTP::Request;
 
-            $logger->warn("Installed $mapname successful to server in $path.");
+            POE::Component::Client::HTTP->spawn(
+                Alias           => 'ua',                            # defaults to 'weeble'
+                From            => undef,                           # defaults to undef (no header)
+                Protocol        => 'HTTP/1.1',                      # defaults to 'HTTP/1.1'
+                Timeout         => 60,                              # defaults to 180 seconds
+                MaxSize         => 31457280,                        # defaults to entire response
+                Streaming       => 0,                               # defaults to 0 (off)
+                FollowRedirects => 0,                               # defaults to 0 (off)
+            );
+
+            my $request = HTTP::Request->new( GET => $DL_LINK, ) or die "foo baa";
+
+            $_[KERNEL]->post(
+                'ua',                                               # posts to the 'ua' alias
+                'request',                                          # posts to ua's 'request' state
+                'response',                                         # which of our states will receive the response
+                $request,                                           # an HTTP::Request object
+            );
+
+            my $extract = Archive::Extract->new( archive => $mapname . ".bz2" );
+
+            if ( !$extract->extract ) {
+                $logger->warn(" Couldn't extract $mapname. bz2, this map wont work . ");
+                $gslogger->warn( " MAPDOWNLOAD : Error while extracting file : " . $extract->error, $gsID );
+                $gslogger->setstatus( " mapdlfail ", $gsID );
+            }
+
+            my $user = Linux::usermod->new($user);
+
+            my $uID = $user->get(2);
+            my $gID = $user->get(3);
+
+            if ( !chown $uID, $gID, $mapname ) {
+                $logger->warn(" Couldn't past $user the correct rights for $mapname : $! ");
+                return;
+            }
+
+            if ( !unlink( $mapname . ".bz2 " ) ) {
+                $logger->warn(" Couldn't delete mapfile : $mapname.bz2 : $! ");
+                $gslogger->warn( " MAPDOWNLOAD : Error while deleting $mapname.bz2 : $! ", $gsID );
+                $gslogger->setstatus( " mapdlfail ", $gsID );
+            }
+
+            $logger->warn(" Installed $mapname successful to server in $path. ");
         }
         else {
             $logger->warn("$mapname isn't a regular mapfile name or format, aborting.");
