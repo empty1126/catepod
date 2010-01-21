@@ -5,44 +5,48 @@
 "pidfile":"/var/lock/catepod.pid",
 "pipe_dir":"/var/www/virtualHosts/catepo.net/wi/socket",
 "gswi_dir":"/home/",
+"sql":
+    {
+    "username":"root",
+    "password":"k23771"    
+    },
 "games":
     {
         //Game                      //PoCo
         //-----------------------------------------------------
 
         "counter-strike"            :"Catepod::Gameserver::CounterStrike",          //works
-        "counter-strike-source"     :"Catepod::Gameserver::CounterStrikeSource",    //in progress
-	    "day-of-defeat"             :"Catepod::Gameserver::DayOfDefeat",            //later
-	    "day-of-defeat-source"      :"Catepod::Gameserver::DayOfDefeatSource"       //later
+        "counter-strike-source"     :"Catepod::Gameserver::CounterStrikeSource",    //works
+	    "day-of-defeat"             :"Catepod::Gameserver::DayOfDefeat",            //works
+	    "day-of-defeat-source"      :"Catepod::Gameserver::DayOfDefeatSource"       //works
     },
 "packagedir":"/home/Catepod/",
 "mods":
     {
         //Game/MOD                  //PoCo
         //-----------------------------------------------------
-
+        
         //Counterstrike 1.6       
-        "metamod"                   :"Catepod::Addons::MetaMod",                    //installed and works
-        "amxmodx"                   :"Catepod::Addons::AmXMoDX",                    //installed and works
-        "hlguard"                   :"Catepod::Addons::HLGuard",                    //installed and works
-        "statsme"                   :"Catepod::Addons::StatsMe",                    //try'd to install, will not work - fix it later
+        "MetaMod"                   :"Catepod::Addons::MetaMod",                    //works
+        "AmXMoDX"                   :"Catepod::Addons::AmXMoDX",                    //works
+        "HLGuard"                   :"Catepod::Addons::HLGuard",                    //works
         //Day of defeat
 
         //Counterstrike Source
-        "metamod-source"            :"Catepod::Addons::MetaModSource",              //deinstall works, just need to fix the install later
-        "eventscripts"              :"Catepod::Addons::EventScripts",               //in progress
-        "gungame-source"            :"Catepod::Addons::GunGameSource",              //later
-        "maniadmin-source"          :"Catepod::Addons::ManiAdminSource",            //later
-        "noblock"                   :"Catepod::Addons::NoBlock",                    //later
-        "zblock"                    :"Catepod::Addons::zBlock",                     //later
-        "dos-attack-fix"            :"Catepod::Addons::DosAttackFix",               //later
-        "rpg-source"                :"Catepod::Addons::RPGSource",                  //later
-        "sbdetox"                   :"Catepod::Addons::SBDetox",                    //later
-        "sourcemode"                :"Catepod::Addons::SourceMode",                 //later 
+        "MetaModSource"             :"Catepod::Addons::MetaModSource",              //works
+        "EventScripts"              :"Catepod::Addons::EventScripts",               //works
+        "GunGameSource"             :"Catepod::Addons::GunGameSource",              //in progress
+        "ManiAdminSource"           :"Catepod::Addons::ManiAdminSource",            //works
+        "NoBlock"                   :"Catepod::Addons::NoBlock",                    //later
+        "zBlock"                    :"Catepod::Addons::zBlock",                     //later
+        "DosAttackFix"              :"Catepod::Addons::DosAttackFix",               //later
+        "RPGSource"                 :"Catepod::Addons::RPGSource",                  //later
+        "SBDetox"                   :"Catepod::Addons::SBDetox",                    //later
+        "SourceMode"                :"Catepod::Addons::SourceMode",                 //later 
 
         //Day of defeat Source
-        "gungame-dods"              :"Catepod::Addons::GunGameDoDS",                //comming later
-        "maniadmin-dods"            :"Catepod::Addons::ManiAdminDoDS"               //comming later
+        "GunGameDoDS"               :"Catepod::Addons::GunGameDoDS",                //later
+        "ManiAdminDoDS"             :"Catepod::Addons::ManiAdminDoDS"               //later
 
     }
 }
