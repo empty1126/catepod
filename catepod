@@ -30,10 +30,13 @@ use JSON;
 use Fcntl qw/:flock/;
 
 use DBI;
+use POE qw(Component::Client::HTTP);
+use HTTP::Request;
 
 use File::Path;
 use Linux::usermod;
 use Archive::Extract;
+use Unix::PasswdFile;
 
 my $configfile = shift @ARGV;
 my $conf;
@@ -54,6 +57,8 @@ my $PIPE_DIRECTORY = $conf->{pipe_dir};
 my $GSWI_DIR       = $conf->{gswi_dir};
 my $GAMES          = $conf->{games};
 my $PACKAGE_DIR    = $conf->{packagedir};
+my $SQL_USER       = $conf->{sql}->{username};
+my $SQL_PASS       = $conf->{sql}->{password};
 
 my $VERSION = 0.1;
 
@@ -113,21 +118,55 @@ POE::Session->create(
         add_gameserver    => \&add_gameserver,
         delete_gameserver => \&delete_gameserver,
         nightlyrestart    => \&nightlyrestart,
-        response          => \&reponse,
-        request           => \&request,
+        checkwarmode      => \&checkwarmode,
+        finishwarmode     => \&finishwarmode,
     },
     heap => { gameserver => {}, }
 );
 
 POE::Kernel->run();
 
-sub request {
+sub finishwarmode {
+    my $path = $_[ARG0];
+
+    if ( !$_[KERNEL]->post( $path => "checkwarmode" ) ) {
+        if ( $! eq "No such process" ) {
+            $logger->info( $path . ": Not running, don't need to check." );
+        }
+        else {
+            $logger->info( $path . ": Can not check: $!" );
+        }
+    }
 
 }
 
-sub response {
-    my $response = $_[ARG1];
-    $response->decode_content
+sub checkwarmode {
+    DEBUG;
+    $logger->info("Starting subroutine for checking warmode of gameserver");
+
+    my $dsn = "DBI:mysql:database=gswi;host=localhost;port=3306";
+    my $dbh = DBI->connect( $dsn, $SQL_USER, $SQL_PASS );
+
+    my $sth = $dbh->prepare(qq{SELECT * FROM gswi_gameserver WHERE warmod='1'});
+    $sth->execute();
+
+    while ( my $ref = $sth->fetchrow_hashref ) {
+        my $path = $ref->{path};
+
+        if ( !$_[KERNEL]->post( $path => "_process_command", "command" => "sv_password" ) ) {
+            if ( $! eq "No such process" ) {
+                $logger->info( $path . ": Not running, don't need to check." );
+            }
+            else {
+                $logger->info( $path . ": Can not check: $!" );
+            }
+        }
+
+        POE::Kernel->delay( 'finishwarmode' => 3, $path );
+
+    }
+    $_[KERNEL]->alarm( checkwarmode => ( int( time() ) + ( 60 * 5 ) ) );
+
 }
 
 sub nightlyrestart {
@@ -135,7 +174,7 @@ sub nightlyrestart {
     $logger->warn("Starting nightly restart of gameservers");
 
     my $dsn = "DBI:mysql:database=gswi;host=localhost;port=3306";
-    my $dbh = DBI->connect( $dsn, 'xxxx', 'xxxx' );
+    my $dbh = DBI->connect( $dsn, $SQL_USER, $SQL_PASS );
 
     my $sth = $dbh->prepare(qq{SELECT * FROM gswi_nightlyrestart});
     $sth->execute();
@@ -275,7 +314,7 @@ sub nightlyrestart {
 
     $dbh->disconnect();
 
-    POE::Kernel->alarm( nightlyrestart => ( int( time() ) + ( 24 * 60 * 60 ) ) );
+    $_[KERNEL]->alarm( nightlyrestart => ( int( time() ) + ( 24 * 60 * 60 ) ) );
 }
 
 sub add_gameserver {
@@ -304,6 +343,7 @@ sub start {
     ) or $logger->warn("Couldn't spawn wheel: $!");
 
     $_[KERNEL]->alarm( nightlyrestart => ( ( int( time() / 86400 ) * 86400 ) + ( 24 * 60 * 60 ) + ( 3 * 60 * 60 ) ) );
+    $_[KERNEL]->alarm( checkwarmode => ( int( time() ) + ( 60 * 5 ) ) );
 
     POE::Kernel->sig( INT => "sig_shutdown" );
     POE::Kernel->alias_set('catepod');
@@ -327,6 +367,7 @@ sub pipe_data {
         $logger->warn("received invalid JSON: $input");
         return;
     }
+
     POE::Kernel->yield( 'process_command', $hashref );
 }
 
@@ -361,6 +402,9 @@ sub process_command {
         $logger->warn("received quit command, exiting...");
         delete $_[HEAP]->{fifo};
         POE::Kernel->yield('sig_shutdown');
+    }
+    elsif ( $data->{command} eq 'ping' ) {
+        $logger->info("received signal");
     }
     elsif ( $data->{command} eq 'start' ) {
         my $port       = $data->{port};
@@ -505,6 +549,7 @@ sub process_command {
         my $require_name = $poco;
         $require_name =~ s/::/\//g;
         $require_name .= '.pm';
+
         eval { require $require_name; };
         if ($@) { $logger->info("Error while compilling $poco: $@"); return; }
         eval {
@@ -591,6 +636,19 @@ sub process_command {
         $logger->info("$username successfully removed !");
 
     }
+    elsif ( $data->{command} eq "user_passwd" ) {
+        my $username = $data->{username};
+        my $passwd   = $data->{password};
+
+        my $pw = new Unix::PasswdFile "/etc/passwd";
+
+        $pw->passwd( $username, $passwd );
+        $pw->commit();
+
+        undef $pw;
+
+        $logger->warn("User's password changed: $username.");
+    }
     elsif ( $data->{command} eq "install_map" ) {
         my $mapname = $data->{mapname};
         my $port    = $data->{port};
@@ -603,68 +661,58 @@ sub process_command {
         my $FD_LINK   = $data->{fastdownloadlink};
         my $DL_LINK   = "$FD_SERVER/$FD_LINK";
 
-        if ( !-e "$path" ) {
-            $logger->warn("It seems, that in $path isn't installed a gameserver, aborting.");
+        unless ($port) {
+            $logger->warn("Couldn't install map without a port.");
             return;
         }
 
-        if ( $mapname =~ m/.*bsp$/ ) {
+        unless ($gsID) {
+            $logger->warn("Couldn't install map without a gameserver ID.");
+            return;
+        }
 
-            if ( !chdir( $path . "/" . $game . "/maps/" ) ) {
-                $logger->warn("Couldn't chdir to $path/$game: $!");
+        if ( !$path ) {
+            $logger->warn("We need a gameserver path to install a map.");
+            return;
+        }
+
+        if ( !$DL_LINK ) {
+            $logger->warn("We need a download link to install a map.");
+            return;
+        }
+
+        if ( $mapname =~ m/.*\.bsp$/ ) {
+            $logger->info("Starting with map installation $mapname");
+
+            my $poco         = "Catepod::Addons::MapInstall";
+            my $require_name = $poco;
+            $require_name =~ s/::/\//g;
+            $require_name .= '.pm';
+
+            eval { require $require_name };
+            if ($@) {
+                $logger->warn("Error while requiring $require_name: $@");
                 return;
             }
 
-            use POE qw(Component::Client::HTTP);
-            use HTTP::Request;
-
-            POE::Component::Client::HTTP->spawn(
-                Alias           => 'ua',                            # defaults to 'weeble'
-                From            => undef,                           # defaults to undef (no header)
-                Protocol        => 'HTTP/1.1',                      # defaults to 'HTTP/1.1'
-                Timeout         => 60,                              # defaults to 180 seconds
-                MaxSize         => 31457280,                        # defaults to entire response
-                Streaming       => 0,                               # defaults to 0 (off)
-                FollowRedirects => 0,                               # defaults to 0 (off)
+            $poco->install(
+                mapname => $mapname,
+                port    => $port,
+                user    => $user,
+                path    => $path,
+                dl_link => $DL_LINK,
+                game    => $game,
+                gsID    => $gsID
             );
 
-            my $request = HTTP::Request->new( GET => $DL_LINK, ) or die "foo baa";
-
-            $_[KERNEL]->post(
-                'ua',                                               # posts to the 'ua' alias
-                'request',                                          # posts to ua's 'request' state
-                'response',                                         # which of our states will receive the response
-                $request,                                           # an HTTP::Request object
-            );
-
-            my $extract = Archive::Extract->new( archive => $mapname . ".bz2" );
-
-            if ( !$extract->extract ) {
-                $logger->warn(" Couldn't extract $mapname. bz2, this map wont work . ");
-                $gslogger->warn( " MAPDOWNLOAD : Error while extracting file : " . $extract->error, $gsID );
-                $gslogger->setstatus( " mapdlfail ", $gsID );
-            }
-
-            my $user = Linux::usermod->new($user);
-
-            my $uID = $user->get(2);
-            my $gID = $user->get(3);
-
-            if ( !chown $uID, $gID, $mapname ) {
-                $logger->warn(" Couldn't past $user the correct rights for $mapname : $! ");
+            if ($@) {
+                $logger->warn("Error while creating $poco: $@");
                 return;
             }
 
-            if ( !unlink( $mapname . ".bz2 " ) ) {
-                $logger->warn(" Couldn't delete mapfile : $mapname.bz2 : $! ");
-                $gslogger->warn( " MAPDOWNLOAD : Error while deleting $mapname.bz2 : $! ", $gsID );
-                $gslogger->setstatus( " mapdlfail ", $gsID );
-            }
-
-            $logger->warn(" Installed $mapname successful to server in $path. ");
         }
         else {
-            $logger->warn("$mapname isn't a regular mapfile name or format, aborting.");
+            $logger->warn("Irregular map format: $mapname: Map gotta be in the following format: name.bsp");
             return;
         }
 
@@ -677,6 +725,75 @@ sub process_command {
             $logger->warn("Error while processing command $cmd to $path: $!");
             return;
         }
+    }
+    elsif ( $data->{command} eq "start_sourceTV" ) {
+        my $path    = $data->{path};
+        my $user    = $data->{user};
+        my $port    = $data->{port};
+        my $params  = $data->{params};
+        my $gsID    = $data->{gsID};
+        my $install = $data->{install};
+
+        my $packages = $PACKAGE_DIR;
+
+        unless ($path) {
+            $logger->warn("Couldn't start sourceTV without server path");
+            return;
+        }
+
+        unless ($user) {
+            $logger->warn("Couldn't start sourceTV without username");
+            return;
+        }
+
+        unless ($port) {
+            $logger->warn("Couldn't start sourceTV without server port");
+            return;
+        }
+
+        unless ($params) {
+            $logger->warn("Couldn't start sourceTV without start params");
+            return;
+        }
+
+        unless ($gsID) {
+            $logger->warn("Couldn't start sourceTV without server ID");
+            return;
+        }
+
+        if ( !$install ) {
+            $install = 0;
+        }
+
+        my $poco         = "Catepod::Gameserver::SourceTV";
+        my $require_name = $poco;
+        $require_name =~ s/::/\//g;
+        $require_name .= '.pm';
+
+        eval { require $require_name; };
+
+        if ($@) {
+            $logger->warn("Error while requiring $require_name: $@");
+            return;
+        }
+
+        eval {
+            $poco->create(
+                path     => $path,
+                user     => $user,
+                port     => $port,
+                params   => $params,
+                gsID     => $gsID,
+                install  => $install,
+                packages => $packages,
+            );
+        };
+
+        if ($@) {
+            $logger->warn("Error while creating $poco: $@");
+            return;
+        }
+
     }
     else {
         $logger->warn( "invalid json sent: couldn't understand command '" . $data->{command} . "'" );
